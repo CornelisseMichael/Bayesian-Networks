@@ -1,0 +1,138 @@
+---
+title: "BNCI Assignment 1"
+output: html_notebook
+---
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+# BNCI Assignment 1
+
+
+## Preliminaries
+
+
+### Loading data
+
+```{r}
+data_raw <- read.csv("winequality-white.csv", sep=";")
+head(data_raw)
+```
+
+
+### Preprocessing
+
+```{r}
+data_normalized <- data_raw
+data_normalized[ , 1:(ncol(data_normalized) - 1)] <- scale(data_raw[ , 1:(ncol(data_raw) - 1)]) # scaling
+head(data_normalized)
+```
+
+
+## Reconstructing Paper
+
+### Fitting SEM
+
+```{r}
+library(lavaan)
+# the paper removed density!
+# this is the one for white wine
+model_paper <- sem( "
+citric.acid ~ fixed.acidity + volatile.acidity
+residual.sugar ~ citric.acid
+alcohol ~ residual.sugar + volatile.acidity
+free.sulfur.dioxide ~ fixed.acidity + volatile.acidity + alcohol + residual.sugar
+chlorides ~ volatile.acidity + citric.acid + alcohol
+free.sulfur.dioxide ~ fixed.acidity + volatile.acidity + residual.sugar + alcohol
+total.sulfur.dioxide ~ free.sulfur.dioxide + alcohol
+pH ~ fixed.acidity + residual.sugar + chlorides
+sulphates ~ pH + free.sulfur.dioxide + total.sulfur.dioxide + chlorides
+quality ~ pH + total.sulfur.dioxide + chlorides + citric.acid + volatile.acidity + alcohol
+fixed.acidity ~~ 0*volatile.acidity
+quality ~~ 0*sulphates
+", # Do we need to specify empty connections here? How can I see which connections the model inferred?
+data=data_normalized)
+summary(model_paper)
+```
+
+### Converting and plotting with dagitty
+
+```{r}
+library( dagitty )
+graph_paper <- lavaanToGraph(model_paper) 
+graph_paper_plot <- lavaanToGraph(model_paper, digits = 4) 
+plot(graph_paper_plot)
+```
+
+### Testing
+
+```{r}
+# localTests(graph_paper, data_normalized, type='cis.chisq') # I think this does not work as density was excluded?
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_paper, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = TRUE)
+plotLocalTestResults( results )
+```
+
+## Our Model
+
+### Graph definition
+
+```{r}
+# Our proposed model
+
+graph_white <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.713,0.893"]
+chlorides [pos="0.165,0.786"]
+citric.acid [pos="0.169,0.671"]
+density [pos="0.433,0.687"]
+fixed.acidity [pos="0.167,0.538"]
+free.sulfur.dioxide [pos="0.172,0.281"]
+pH [pos="0.719,0.515"]
+quality [outcome,pos="0.433,0.378"]
+residual.sugar [exposure,pos="0.164,0.895"]
+sulphates [pos="0.699,0.194"]
+total.sulfur.dioxide [pos="0.173,0.156"]
+volatile.acidity [pos="0.171,0.434"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+free.sulfur.dioxide -> quality
+free.sulfur.dioxide -> volatile.acidity
+pH -> quality
+residual.sugar -> alcohol
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> free.sulfur.dioxide
+volatile.acidity -> pH
+volatile.acidity -> quality
+}')
+
+plot(graph_white)
+```
+### Testing
+```{r}
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_white, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
+results
+```
+
+
+```{r}
+plotLocalTestResults(results)
+```
+
