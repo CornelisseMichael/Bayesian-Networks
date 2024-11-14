@@ -32,6 +32,17 @@ head(data_normalized)
 ```
 
 
+
+### Inspecting data
+```{r}
+plot( residual.sugar ~ alcohol, data=data_raw, pch=19 )
+
+plot( total.sulfur.dioxide ~ free.sulfur.dioxide , data=data_normalized, pch=19 )
+
+plot( fixed.acidity ~ citric.acid , data=data_normalized, pch=19 )
+```
+
+
 ## Reconstructing Paper
 
 ### Fitting SEM
@@ -73,12 +84,17 @@ plot(graph_paper_plot)
 # localTests(graph_paper, data_normalized, type='cis.chisq') # I think this does not work as density was excluded?
 CorM <- lavCor(data_normalized)
 results <- localTests(graph_paper, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = TRUE)
+results_ordered <- results[order(results$p.value),] #-abs(results$estimate),
+results_ordered
+```
+```{r}
 plotLocalTestResults( results )
 ```
 
+
 ## Our Model
 
-### Graph definition
+### Initial iteration
 
 ```{r}
 # Our proposed model
@@ -111,7 +127,6 @@ fixed.acidity -> density
 fixed.acidity -> pH
 fixed.acidity -> quality
 free.sulfur.dioxide -> quality
-free.sulfur.dioxide -> volatile.acidity
 pH -> quality
 residual.sugar -> alcohol
 residual.sugar -> density
@@ -122,23 +137,645 @@ volatile.acidity -> pH
 volatile.acidity -> quality
 }')
 
+#free.sulfur.dioxide -> volatile.acidity
+
 plot(graph_white)
 ```
-### Testing
+
 ```{r}
 CorM <- lavCor(data_normalized)
 results <- localTests(graph_white, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
-results
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
 ```
 
 
 ```{r}
 plotLocalTestResults(results)
 ```
+The model at the current state shows a huge misfit of density _||_ total.sulfur.dioxide. Looking into this revealed that it made sense. Total.sulfur.dioxide includes includes both the bound and free Sulfur dioxide (SO2). The main compound bound by sulfur dioxide is acetaldehyde which has a low density of 0.784 g/ mL. Therefore it makes sense that the bound compounds reduce the density of the wine. A direct edge can be established.
 
-# Remove this header
+
+### Update 1 - total.sulfite.dioxide -> density
+
 ```{r}
-x <- "Remove this code block."
-x
+graph_white_1 <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.713,0.893"]
+chlorides [pos="0.165,0.786"]
+citric.acid [pos="0.169,0.671"]
+density [pos="0.433,0.687"]
+fixed.acidity [pos="0.167,0.538"]
+free.sulfur.dioxide [pos="0.172,0.281"]
+pH [pos="0.719,0.515"]
+quality [outcome,pos="0.433,0.378"]
+residual.sugar [exposure,pos="0.164,0.895"]
+sulphates [pos="0.699,0.194"]
+total.sulfur.dioxide [pos="0.173,0.156"]
+volatile.acidity [pos="0.171,0.434"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+free.sulfur.dioxide -> quality
+pH -> quality
+residual.sugar -> alcohol
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> free.sulfur.dioxide
+volatile.acidity -> pH
+volatile.acidity -> quality
+
+total.sulfur.dioxide -> density
+
+}')
+
+plot(graph_white_1)
 ```
+
+```{r}
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_white_1, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+```{r}
+plotLocalTestResults(results)
+```
+As expected this resolves the worst misfitting.
+
+The next misfitting implied coniditonal independence is alcohol _||_ total.sulfur.dioxide. Acetaldehyde plays a role here to as it is the compound that is transformed to alcohol by yeast during the fermentation process. When acetaldehyde is bound by sulphur dioxide though it cannot be transformed into alcohol. Therefore we introduce the connection between total.sulfur.dioxide and alchol.
+
+
+### Update 2: total.sulfite.dioxide -> alcohol
+
+```{r}
+graph_white_2 <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.713,0.893"]
+chlorides [pos="0.165,0.786"]
+citric.acid [pos="0.169,0.671"]
+density [pos="0.433,0.687"]
+fixed.acidity [pos="0.167,0.538"]
+free.sulfur.dioxide [pos="0.172,0.281"]
+pH [pos="0.719,0.515"]
+quality [outcome,pos="0.433,0.378"]
+residual.sugar [exposure,pos="0.164,0.895"]
+sulphates [pos="0.699,0.194"]
+total.sulfur.dioxide [pos="0.173,0.156"]
+volatile.acidity [pos="0.171,0.434"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+free.sulfur.dioxide -> quality
+pH -> quality
+residual.sugar -> alcohol
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> free.sulfur.dioxide
+volatile.acidity -> pH
+volatile.acidity -> quality
+
+
+total.sulfur.dioxide -> density
+total.sulfur.dioxide -> alcohol
+
+}')
+
+plot(graph_white_2)
+```
+```{r}
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_white_2, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+```{r}
+plotLocalTestResults(results)
+```
+Again, a direct edge is guaranteed to resolve the misfit.
+
+The next large problem is residual.sugar _||_ total.sulfur.dioxide. The process of fermentation seems like a fitting context here too. Here, sugar is consumed by yeast to produce alcohol. Sugar that is left when the fermentation process stopped is called residual sugar.
+
+My idea to resolve this independence misfit is to find some latent representation of the fermentation process. I tried several explicit representations but they did not work out. When the SEM models where fit, the latent variable did not seem to express much of the variance. Then Johannes suggested to use implicit latent variables anyways. Those are much easier to fit and test as well.
+
+Domain-wise, I would find that it makes more sense to fit free.sulfur.dioxide <-> residual.sugar, but that did not resolve the independence problem (after fitting this only finds a covariance of 6%)
+
+
+
+
+### Update 3: Implicit latent variable Yeast
+
+#### Just some investigation of the data
+```{r}
+# Plot 1: residual.sugar ~ total.sulfur.dioxide
+plot(residual.sugar ~ total.sulfur.dioxide, data = data_normalized, pch = 19)
+model1 <- lm(residual.sugar ~ total.sulfur.dioxide, data = data_normalized)
+abline(model1, col = 2)
+
+# Extract and print coefficient and p-value
+summary1 <- summary(model1)
+print(summary1)
+coef1 <- summary1$coefficients["total.sulfur.dioxide", "Estimate"]
+pval1 <- summary1$coefficients["total.sulfur.dioxide", "Pr(>|t|)"]
+text(x = 0.7 * max(data_normalized$total.sulfur.dioxide), 
+     y = 0.9 * max(data_normalized$residual.sugar),
+     labels = paste("Coeff =", round(coef1, 3), "\nP-value =", round(pval1, 3)), col = "blue")
+
+# Plot 2: free.sulfur.dioxide ~ residual.sugar
+plot(free.sulfur.dioxide ~ residual.sugar, data = data_normalized, pch = 19)
+model2 <- lm(free.sulfur.dioxide ~ residual.sugar, data = data_normalized)
+abline(model2, col = 2)
+
+# Extract and print coefficient and p-value
+summary2 <- summary(model2)
+coef2 <- summary2$coefficients["residual.sugar", "Estimate"]
+pval2 <- summary2$coefficients["residual.sugar", "Pr(>|t|)"]
+text(x = 0.7 * max(data_normalized$residual.sugar), 
+     y = 0.9 * max(data_normalized$free.sulfur.dioxide),
+     labels = paste("Coeff =", round(coef2, 3), "\nP-value =", round(pval2, 3)), col = "blue")
+
+# Plot 3: free.sulfur.dioxide ~ total.sulfur.dioxide
+plot(free.sulfur.dioxide ~ total.sulfur.dioxide, data = data_normalized, pch = 19)
+model3 <- lm(free.sulfur.dioxide ~ total.sulfur.dioxide, data = data_normalized)
+abline(model3, col = 2)
+
+# Extract and print coefficient and p-value
+summary3 <- summary(model3)
+coef3 <- summary3$coefficients["total.sulfur.dioxide", "Estimate"]
+pval3 <- summary3$coefficients["total.sulfur.dioxide", "Pr(>|t|)"]
+text(x = 0.7 * max(data_normalized$total.sulfur.dioxide), 
+     y = 0.9 * max(data_normalized$free.sulfur.dioxide),
+     labels = paste("Coeff =", round(coef3, 3), "\nP-value =", round(pval3, 3)), col = "blue")
+
+```
+
+
+#### Update of graph
+```{r}
+graph_white_3 <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.673,0.581"]
+chlorides [pos="0.233,0.498"]
+citric.acid [pos="0.236,0.423"]
+density [pos="0.494,0.464"]
+fixed.acidity [pos="0.236,0.349"]
+free.sulfur.dioxide [pos="0.228,0.200"]
+pH [pos="0.667,0.348"]
+quality [outcome,pos="0.494,0.199"]
+residual.sugar [exposure,pos="0.237,0.585"]
+sulphates [pos="0.658,0.125"]
+total.sulfur.dioxide [pos="0.223,0.092"]
+volatile.acidity [pos="0.232,0.276"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+free.sulfur.dioxide -> quality
+total.sulfur.dioxide <-> residual.sugar [pos="0.140,0.380"]
+pH -> quality
+residual.sugar -> alcohol
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> alcohol
+total.sulfur.dioxide -> density
+total.sulfur.dioxide -> free.sulfur.dioxide
+volatile.acidity -> pH
+volatile.acidity -> quality
+}
+')
+
+plot(graph_white_3)
+```
+
+#### SEM Fitting of implicit latent variable total.sulfur.dioxide <-> residual.sugar
+```{r}
+lvsem <- toString(graph_white_3,"lavaan") 
+lvsem.fit <- sem(lvsem, data_normalized) 
+summary(lvsem.fit)
+```
+
+#### Test of fit
+```{r}
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_white_3, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+```{r}
+plotLocalTestResults(results)
+```
+The last remaining issue to be fixed is citric.acid _||_ fixed.acidity. Its not clear to me how you could explain this domain wise. The data set's paper says with fixed.acidity is the concentration of tartaric acid meant. But technically citric acid is also a fixed (non-volatile) acid and can be found naturally in wine with roughly 1/20 the amount of tartaric acid. This would support a direct edge between the two variables. But citric acid is also added manually as a metal binding agent and then its concentration would be independent of that of tartaric acid.
+I decided to fit it as a latent variabel as the exact conditions are not known.
+
+
+### Update 4: citric.acid <-> fixed.acidity
+
+#### Investigation of citric.acid <-> fixed.acidity
+```{r}
+# Plot 1: residual.sugar ~ total.sulfur.dioxide
+plot(citric.acid ~ fixed.acidity, data = data_normalized, pch = 19)
+model1 <- lm(citric.acid ~ fixed.acidity, data = data_normalized)
+abline(model1, col = 2)
+
+# Extract and print coefficient and p-value
+summary1 <- summary(model1)
+print(summary1)
+coef1 <- summary1$coefficients["fixed.acidity", "Estimate"]
+pval1 <- summary1$coefficients["fixed.acidity", "Pr(>|t|)"]
+text(x = 0.7 * max(data_normalized$fixed.acidity), 
+     y = 0.9 * max(data_normalized$citric.acid),
+     labels = paste("Coeff =", round(coef1, 3), "\nP-value =", round(pval1, 3)), col = "blue")
+```
+#### Graph update
+```{r}
+graph_white_4 <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.673,0.581"]
+chlorides [pos="0.233,0.498"]
+citric.acid [pos="0.236,0.423"]
+density [pos="0.494,0.464"]
+fixed.acidity [pos="0.236,0.349"]
+free.sulfur.dioxide [pos="0.228,0.200"]
+pH [pos="0.667,0.348"]
+quality [outcome,pos="0.494,0.199"]
+residual.sugar [exposure,pos="0.237,0.585"]
+sulphates [pos="0.658,0.125"]
+total.sulfur.dioxide [pos="0.223,0.092"]
+volatile.acidity [pos="0.232,0.276"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+fixed.acidity <-> citric.acid [pos="0.170,0.400"]
+free.sulfur.dioxide -> quality
+pH -> quality
+residual.sugar -> alcohol
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> alcohol
+total.sulfur.dioxide -> density
+total.sulfur.dioxide -> free.sulfur.dioxide
+total.sulfur.dioxide <-> residual.sugar [pos="0.140,0.380"]
+volatile.acidity -> pH
+volatile.acidity -> quality
+}
+')
+
+plot(graph_white_4)
+```
+
+#### SEM Fitting of implicit latent variable total.sulfur.dioxide <-> residual.sugar
+```{r}
+lvsem <- toString(graph_white_4,"lavaan") 
+lvsem.fit <- sem(lvsem, data_normalized) 
+summary(lvsem.fit)
+```
+
+#### Test of fit
+```{r}
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_white_4, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+```{r}
+plotLocalTestResults(results)
+```
+
+
+### Calculating main causal effects
+```{r}
+graph_white_inference <- lavaanToGraph(lvsem_yeast_fit)
+#impliedCovarianceMatrix(graph_white_inference)
+```
+
+
+Sanity check: Sulphates has no parents. Therefore a simple linear model should get similar results than what inference on our fitted graph finds.
+```{r}
+print(lm(quality ~ sulphates, data_latent))
+print(impliedCovarianceMatrix( graph_white_inference)['sulphates','quality'])
+```
+seems good, its in the same magnitude.
+
+
+## Omitted code
+
+### Experiment 4.1: Latent modeling of Fermentation -> Failed
+```{r}
+graph_white_4 <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.713,0.893"]
+chlorides [pos="0.165,0.786"]
+citric.acid [pos="0.169,0.671"]
+density [pos="0.433,0.687"]
+fixed.acidity [pos="0.167,0.538"]
+free.sulfur.dioxide [pos="0.172,0.281"]
+pH [pos="0.719,0.515"]
+quality [outcome,pos="0.433,0.378"]
+residual.sugar [exposure,pos="0.164,0.895"]
+sulphates [pos="0.699,0.194"]
+total.sulfur.dioxide [pos="0.173,0.156"]
+volatile.acidity [pos="0.171,0.434"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+free.sulfur.dioxide -> quality
+pH -> quality
+
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> free.sulfur.dioxide
+volatile.acidity -> pH
+volatile.acidity -> quality
+
+total.sulfur.dioxide -> density
+U.Fermentation [latent] U.Fermentation
+U.Fermentation <- free.sulfur.dioxide
+U.Fermentation -> residual.sugar
+U.Fermentation -> alcohol
+}')
+
+# total.sulfur.dioxide -> alcohol
+# residual.sugar -> alcohol
+
+plot(graph_white_4)
+```
+
+
+#### SEM Fitting of explicit latent variable
+```{r}
+lvsem_fermentation <- "
+alcohol ~ density
+alcohol ~ pH
+alcohol ~ quality
+chlorides ~ alcohol
+chlorides ~ density
+chlorides ~ quality
+citric.acid ~ density
+citric.acid ~ pH
+citric.acid ~ quality
+density ~ quality
+fixed.acidity ~ density
+fixed.acidity ~ pH
+fixed.acidity ~ quality
+free.sulfur.dioxide ~ quality
+pH ~ quality
+
+residual.sugar ~ density
+residual.sugar ~ quality
+sulphates ~ quality
+total.sulfur.dioxide ~ free.sulfur.dioxide
+volatile.acidity ~ pH
+volatile.acidity ~ quality
+
+total.sulfur.dioxide ~ density
+U.Fermentation =~ coeff1*free.sulfur.dioxide
+U.Fermentation =~ coeff1*residual.sugar
+U.Fermentation =~ coeff1*alcohol
+"
+
+# residual.sugar ~ alcohol
+
+# define that coefficients are the same, restrict for identifiability
+#U.Yeast =~ latent_coefficient*free.sulfur.dioxide
+#U.Yeast =~ latent_coefficient*residual.sugar
+
+lvsem_fermentation_fit <- sem(lvsem_fermentation, data_normalized)
+#summary(lvsem_fermentation_fit)
+```
+#### Add latent variable to dataset
+```{r}
+data_latent <- data_normalized
+latent_values <- predict(lvsem_fermentation_fit) 
+data_latent$U.Fermentation <- as.numeric(latent_values)
+head(data_latent)
+```
+
+```{r}
+# Check variance of each variable
+apply(data_latent, 2, var)
+```
+
+
+```{r}
+#CorM <- lavCor(data_latent)
+#results <- localTests(graph_white_4, sample.cov = CorM, sample.nobs = nrow(data_latent), abbreviate.names = FALSE)
+#results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+#results_ordered
+
+#Error: lavaan->lav_samplestats_icov():  
+#   sample covariance matrix is not positive-definite
+
+# The latent variable did not find reasonable relation.
+```
+
+### Experiment 4.2: Latent modeling of Fermentation -> Failed
+
+```{r}
+graph_white_4.2 <- dagitty('dag {
+bb="0,0,1,1"
+alcohol [pos="0.713,0.893"]
+chlorides [pos="0.165,0.786"]
+citric.acid [pos="0.169,0.671"]
+density [pos="0.433,0.687"]
+fixed.acidity [pos="0.167,0.538"]
+free.sulfur.dioxide [pos="0.172,0.281"]
+pH [pos="0.719,0.515"]
+quality [outcome,pos="0.433,0.378"]
+residual.sugar [exposure,pos="0.164,0.895"]
+sulphates [pos="0.699,0.194"]
+total.sulfur.dioxide [pos="0.173,0.156"]
+volatile.acidity [pos="0.171,0.434"]
+alcohol -> density
+alcohol -> pH
+alcohol -> quality
+chlorides -> alcohol
+chlorides -> density
+chlorides -> quality
+citric.acid -> density
+citric.acid -> pH
+citric.acid -> quality
+density -> quality
+fixed.acidity -> density
+fixed.acidity -> pH
+fixed.acidity -> quality
+free.sulfur.dioxide -> quality
+pH -> quality
+residual.sugar -> alcohol
+residual.sugar -> density
+residual.sugar -> quality
+sulphates -> quality
+total.sulfur.dioxide -> free.sulfur.dioxide
+volatile.acidity -> pH
+volatile.acidity -> quality
+
+total.sulfur.dioxide -> density
+total.sulfur.dioxide -> alcohol
+U.Fermentation [latent] U.Fermentation
+U.Fermentation -> free.sulfur.dioxide
+U.Fermentation -> total.sulfur.dioxide
+U.Fermentation -> residual.sugar
+U.Fermentation -> alcohol
+}')
+
+plot(graph_white_4.2)
+```
+
+
+#### SEM Fitting of explicit latent variable
+```{r}
+lvsem_fermentation <- "
+alcohol ~ density
+alcohol ~ pH
+alcohol ~ quality
+chlorides ~ alcohol
+chlorides ~ density
+chlorides ~ quality
+citric.acid ~ density
+citric.acid ~ pH
+citric.acid ~ quality
+density ~ quality
+fixed.acidity ~ density
+fixed.acidity ~ pH
+fixed.acidity ~ quality
+free.sulfur.dioxide ~ quality
+pH ~ quality
+# residual.sugar ~ alcohol
+residual.sugar ~ density
+residual.sugar ~ quality
+sulphates ~ quality
+total.sulfur.dioxide ~ free.sulfur.dioxide
+volatile.acidity ~ pH
+volatile.acidity ~ quality
+
+total.sulfur.dioxide ~ density
+total.sulfur.dioxide ~ alcohol
+U.Fermentation =~ coeff1*free.sulfur.dioxide
+U.Fermentation =~ coeff1*total.sulfur.dioxide
+U.Fermentation =~ coeff1*residual.sugar
+U.Fermentation =~ coeff1*alcohol
+"
+
+lvsem_fermentation_fit <- sem(lvsem_fermentation, data_normalized)
+summary(lvsem_fermentation_fit)
+```
+
+
+#### Add latent variable to dataset
+```{r}
+data_latent <- data_normalized
+latent_values <- predict(lvsem_fermentation_fit) 
+data_latent$U.Fermentation <- as.numeric(latent_values)
+head(data_latent)
+```
+
+```{r}
+# Check variance of each variable
+apply(data_latent, 2, var)
+```
+
+
+```{r}
+#CorM <- lavCor(data_latent)
+#results <- localTests(graph_white_4, sample.cov = CorM, sample.nobs = nrow(data_latent), abbreviate.names = FALSE)
+#results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+#results_ordered
+
+#Error: lavaan->lav_samplestats_icov():  
+#   sample covariance matrix is not positive-definite
+
+# The latent variable did not find reasonable relation.
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
