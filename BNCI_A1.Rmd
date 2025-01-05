@@ -23,25 +23,342 @@ head(data_raw)
 ```
 
 
+### Inspecting data
+
+#### Plotting raw data
+```{r}
+variable_names <- names(data_raw)
+
+# Add a small value to zeros in citric.acid, such that log transforms can be applied
+# The rest of the variables seem all positive
+data_plot <- data_raw
+data_plot$citric.acid[data_plot$citric.acid == 0] <- 0.00000001
+
+# Create a directory to save plots if needed
+if (!dir.exists("plots")) {
+  dir.create("plots")
+}
+
+# Loop through variable pairs for plotting
+for (i in 1:(length(variable_names) - 1)) {
+  for (j in (i + 1):length(variable_names)) {
+    var_x <- variable_names[i]
+    var_y <- variable_names[j]
+
+    # Base plot
+    plot(data_plot[[var_x]], data_plot[[var_y]],
+         xlab = var_x, ylab = var_y,
+         pch = 19, main = paste(var_y, "vs", var_x))
+
+    # Fit linear model
+    model <- lm(data_plot[[var_y]] ~ data_plot[[var_x]])
+    abline(model, col = 2)
+
+    # Extract and display coefficient and p-value
+    summary_model <- summary(model)
+    coef <- summary_model$coefficients[2, "Estimate"]
+    pval <- summary_model$coefficients[2, "Pr(>|t|)"]
+    text(x = 0.7 * max(data_plot[[var_x]], na.rm = TRUE),
+         y = 0.9 * max(data_plot[[var_y]], na.rm = TRUE),
+         labels = paste("Coeff =", round(coef, 3), "\nP-value =", round(pval, 3)), col = "blue")
+
+    # Save the plot
+    file_name <- paste0("plots/", var_y, "_vs_", var_x, ".png")
+    dev.copy(png, file_name)
+    dev.off()
+
+    # Log transformation plots
+    if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) { # Log works only for positive values
+      plot(log(data_plot[[var_x]]), log(data_plot[[var_y]]),
+           xlab = paste("log(", var_x, ")", sep = ""),
+           ylab = paste("log(", var_y, ")", sep = ""),
+           pch = 19, main = paste("log(", var_y, ") vs log(", var_x, ")"))
+
+      # Fit linear model for log-transformed data
+      model_log <- lm(log(data_plot[[var_y]]) ~ log(data_plot[[var_x]]))
+      abline(model_log, col = 2)
+
+      # Extract and display coefficient and p-value for log-transformed data
+      summary_model_log <- summary(model_log)
+      coef_log <- summary_model_log$coefficients[2, "Estimate"]
+      pval_log <- summary_model_log$coefficients[2, "Pr(>|t|)"]
+      text(x = 0.7 * max(log(data_plot[[var_x]]), na.rm = TRUE),
+           y = 0.9 * max(log(data_plot[[var_y]]), na.rm = TRUE),
+           labels = paste("Coeff =", round(coef_log, 3), "\nP-value =", round(pval_log, 3)), col = "blue")
+
+      # Save the log-transformed plot
+      log_file_name <- paste0("plots/log_", var_y, "_vs_log_", var_x, ".png")
+      dev.copy(png, log_file_name)
+      dev.off()
+    }
+  }
+}
+
+```
+
+#### Residual plots
+```{r}
+# Create a directory to save residual plots if needed
+if (!dir.exists("residual_plots")) {
+  dir.create("residual_plots")
+}
+
+# Loop through varia3#ble pairs for residual plots
+for (i in 1:(length(variable_names) - 1)) {
+  for (j in (i + 1):length(variable_names)) {
+    var_x <- variable_names[i]
+    var_y <- variable_names[j]
+
+    # Fit the linear model for raw data
+    model_raw <- lm(data_plot[[var_y]] ~ data_plot[[var_x]])
+    residuals_raw <- residuals(model_raw)
+
+    # Plot residuals for raw data
+    plot(data_plot[[var_x]], residuals_raw,
+         xlab = var_x, ylab = paste("Residuals of", var_y),
+         pch = 19, main = paste("Residuals of", var_y, "vs", var_x))
+
+    # Add a horizontal line at zero (representing the fitted model)
+    abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+    # Save the residual plot for raw data
+    file_name_raw <- paste0("residual_plots/raw_residuals_", var_y, "_vs_", var_x, ".png")
+    dev.copy(png, file_name_raw)
+    dev.off()
+
+    # If both variables are positive, do the same for log-transformed data
+    if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) {
+      # Fit the linear model for log-transformed data
+      model_log <- lm(log(data_plot[[var_y]]) ~ log(data_plot[[var_x]]))
+      residuals_log <- residuals(model_log)
+
+      # Plot residuals for log-transformed data
+      plot(log(data_plot[[var_x]]), residuals_log,
+           xlab = paste("log(", var_x, ")", sep = ""),
+           ylab = paste("Residuals of log(", var_y, ")", sep = ""),
+           pch = 19, main = paste("Residuals of log(", var_y, ") vs log(", var_x, ")"))
+
+      # Add a horizontal line at zero (representing the fitted model)
+      abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+      # Save the residual plot for log-transformed data
+      file_name_log <- paste0("residual_plots/log_residuals_", var_y, "_vs_", var_x, ".png")
+      dev.copy(png, file_name_log)
+      dev.off()
+    }
+  }
+}
+```
+
+
+
+
 ### Preprocessing
 
+#### Not included: Applying log to alcohol seems useful
 ```{r}
+hist(data_raw$chlorides)
+hist(data_raw$alcohol)
+var_x <- "chlorides"
+var_y <- "alcohol"
+
+if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) {
+      # Fit the linear model for log-transformed data
+      model_log <- lm(data_plot[[var_y]] ~ log(data_plot[[var_x]]))
+      residuals_log <- residuals(model_log)
+
+      # Plot residuals for log-transformed data
+      plot(log(data_plot[[var_x]]), residuals_log,
+           xlab = paste("log(", var_x, ")", sep = ""),
+           ylab = paste("Residuals of ", var_y, "", sep = ""),
+           pch = 19, main = paste("Residuals of ", var_y, " vs log(", var_x, ")"))
+
+      # Add a horizontal line at zero (representing the fitted model)
+      abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+      # Save the residual plot for log-transformed data
+      file_name_log <- paste0("residual_plots/log_residuals_", var_y, "_vs_", var_x, ".png")
+      dev.copy(png, file_name_log)
+      dev.off()
+}
+
+var_x <- "alcohol"
+var_y <- "chlorides"
+
+if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) {
+      # Fit the linear model for log-transformed data
+      model_log <- lm(data_plot[[var_y]] ~ log(data_plot[[var_x]]))
+      residuals_log <- residuals(model_log)
+
+      # Plot residuals for log-transformed data
+      plot(log(data_plot[[var_x]]), residuals_log,
+           xlab = paste("log(", var_x, ")", sep = ""),
+           ylab = paste("Residuals of ", var_y, "", sep = ""),
+           pch = 19, main = paste("Residuals of ", var_y, " vs log(", var_x, ")"))
+
+      # Add a horizontal line at zero (representing the fitted model)
+      abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+      # Save the residual plot for log-transformed data
+      file_name_log <- paste0("residual_plots/log_residuals_", var_y, "_vs_", var_x, ".png")
+      dev.copy(png, file_name_log)
+      dev.off()
+}
+
+var_x <- "alcohol"
+var_y <- "density"
+
+if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) {
+      # Fit the linear model for log-transformed data
+      model_log <- lm(data_plot[[var_y]] ~ log(data_plot[[var_x]]))
+      residuals_log <- residuals(model_log)
+
+      # Plot residuals for log-transformed data
+      plot(log(data_plot[[var_x]]), residuals_log,
+           xlab = paste("log(", var_x, ")", sep = ""),
+           ylab = paste("Residuals of ", var_y, "", sep = ""),
+           pch = 19, main = paste("Residuals of ", var_y, " vs log(", var_x, ")"))
+
+      # Add a horizontal line at zero (representing the fitted model)
+      abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+      # Save the residual plot for log-transformed data
+      file_name_log <- paste0("residual_plots/log_residuals_", var_y, "_vs_", var_x, ".png")
+      dev.copy(png, file_name_log)
+      dev.off()
+}
+```
+
+
+#### Not included: outlier removal and subsequent residual plots
+```{r}
+# Removing residual sugar outlier
+max_sugar <- max(data_raw$residual.sugar)
+data_no_outlier <- data_raw[data_raw$residual.sugar != max_sugar,]
+```
+
+```{r}
+# Plot of removed outlier
+var_x <- "residual.sugar"
+var_y <- "alcohol"
+
+# Fit the linear model for raw data
+model_raw <- lm(data_no_outlier[[var_y]] ~ data_no_outlier[[var_x]])
+residuals_raw <- residuals(model_raw)
+
+# Plot residuals for raw data
+plot(data_no_outlier[[var_x]], residuals_raw, 
+     xlab = var_x, ylab = paste("Residuals of", var_y), 
+     pch = 19, main = paste("Residuals of", var_y, "vs", var_x))
+
+# Add a horizontal line at zero (representing the fitted model)
+abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+# Save the residual plot for raw data
+#file_name_raw <- paste0("residual_plots/raw_residuals_", var_y, "_vs_", var_x, ".png")
+#dev.copy(png, file_name_raw)
+#dev.off()
+
+# If both variables are positive, do the same for log-transformed data
+if (all(data_no_outlier[[var_x]] > 0) && all(data_no_outlier[[var_y]] > 0)) {
+  # Fit the linear model for log-transformed data
+  model_log <- lm(log(data_no_outlier[[var_y]]) ~ log(data_no_outlier[[var_x]]))
+  residuals_log <- residuals(model_log)
+  
+  # Plot residuals for log-transformed data
+  plot(log(data_no_outlier[[var_x]]), residuals_log, 
+       xlab = paste("log(", var_x, ")", sep = ""), 
+       ylab = paste("Residuals of log(", var_y, ")", sep = ""), 
+       pch = 19, main = paste("Residuals of log(", var_y, ") vs log(", var_x, ")"))
+  
+  # Add a horizontal line at zero (representing the fitted model)
+  abline(h = 0, col = "red", lwd = 2, lty = 2)
+  
+  # Save the residual plot for log-transformed data
+  #file_name_log <- paste0("residual_plots/log_residuals_", var_y, "_vs_", var_x, ".png")
+  #dev.copy(png, file_name_log)
+  #dev.off()
+}
+```
+```{r}
+# Residual plots with removed outlier
+data_plot <- data_no_outlier
+# Create a directory to save residual plots if needed
+if (!dir.exists("residual_plots_no_outlier")) {
+  dir.create("residual_plots_no_outlier")
+}
+
+# Loop through variable pairs for residual plots
+for (i in 1:(length(variable_names) - 1)) {
+  for (j in (i + 1):length(variable_names)) {
+    var_x <- variable_names[i]
+    var_y <- variable_names[j]
+
+    # Fit the linear model for raw data
+    model_raw <- lm(data_plot[[var_y]] ~ data_plot[[var_x]])
+    residuals_raw <- residuals(model_raw)
+
+    # Plot residuals for raw data
+    plot(data_plot[[var_x]], residuals_raw,
+         xlab = var_x, ylab = paste("Residuals of", var_y),
+         pch = 19, main = paste("Residuals of", var_y, "vs", var_x))
+
+    # Add a horizontal line at zero (representing the fitted model)
+    abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+    # Save the residual plot for raw data
+    file_name_raw <- paste0("residual_plots_no_outlier/raw_residuals_", var_y, "_vs_", var_x, ".png")
+    dev.copy(png, file_name_raw)
+    dev.off()
+
+    # If both variables are positive, do the same for log-transformed data
+    if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) {
+      # Fit the linear model for log-transformed data
+      model_log <- lm(log(data_plot[[var_y]]) ~ log(data_plot[[var_x]]))
+      residuals_log <- residuals(model_log)
+
+      # Plot residuals for log-transformed data
+      plot(log(data_plot[[var_x]]), residuals_log,
+           xlab = paste("log(", var_x, ")", sep = ""),
+           ylab = paste("Residuals of log(", var_y, ")", sep = ""),
+           pch = 19, main = paste("Residuals of log(", var_y, ") vs log(", var_x, ")"))
+
+      # Add a horizontal line at zero (representing the fitted model)
+      abline(h = 0, col = "red", lwd = 2, lty = 2)
+
+      # Save the residual plot for log-transformed data
+      file_name_log <- paste0("residual_plots_no_outlier/log_residuals_", var_y, "_vs_", var_x, ".png")
+      dev.copy(png, file_name_log)
+      dev.off()
+    }
+  }
+}
+```
+
+#### Normalizing data, outlier left in
+```{r}
+#data_normalized <- data_no_outlier
 data_normalized <- data_raw
+
+# Ordered factor for quality, such that lavaan applies polychoric relationship for quality
+data_normalized$quality <- ordered(data_normalized$quality, levels = sort(unique(data_normalized$quality)))
 data_normalized[ , 1:(ncol(data_normalized) - 1)] <- scale(data_raw[ , 1:(ncol(data_raw) - 1)]) # scaling
 head(data_normalized)
 ```
 
-
-
-### Inspecting data
 ```{r}
-plot( residual.sugar ~ alcohol, data=data_raw, pch=19 )
-
-plot( total.sulfur.dioxide ~ free.sulfur.dioxide , data=data_normalized, pch=19 )
-
-plot( fixed.acidity ~ citric.acid , data=data_normalized, pch=19 )
+# Sanity check: Ordered factor does not affect plotting
+data_test <- data_raw
+data_test$quality <- ordered(data_test$quality, levels = sort(unique(data_test$quality)))
+var_x = "fixed.acidity"
+var_y = "quality"
+plot(data_raw$fixed.acidity, data_raw$quality,
+         xlab = var_x, ylab = var_y,
+         pch = 19, main = paste(var_y, "vs", var_x))
+plot(data_test$fixed.acidity, data_test$quality,
+         xlab = var_x, ylab = var_y,
+         pch = 19, main = paste(var_y, "vs", var_x))
 ```
-
 
 ## Reconstructing Paper
 
@@ -66,7 +383,7 @@ fixed.acidity ~~ 0*volatile.acidity
 quality ~~ 0*sulphates
 ", # Do we need to specify empty connections here? How can I see which connections the model inferred?
 data=data_normalized)
-summary(model_paper)
+#summary(model_paper)
 ```
 
 ### Converting and plotting with dagitty
@@ -151,7 +468,11 @@ results_ordered
 
 
 ```{r}
+# , fig.width=16, fig.height=8
 plotLocalTestResults(results)
+#par = c("width = 12", "height=800", "res=150")
+par(mar = c(5, 20, 4, 2)) #, cex.axis = 1.5, cex.lab = 2
+plotLocalTestResults(results, n=10, auto.margin = FALSE)
 ```
 The model at the current state shows a huge misfit of density _||_ total.sulfur.dioxide. Looking into this revealed that it made sense. Total.sulfur.dioxide includes includes both the bound and free Sulfur dioxide (SO2). The main compound bound by sulfur dioxide is acetaldehyde which has a low density of 0.784 g/ mL. Therefore it makes sense that the bound compounds reduce the density of the wine. A direct edge can be established.
 
@@ -211,11 +532,11 @@ results_ordered
 ```
 
 ```{r}
-plotLocalTestResults(results)
+plotLocalTestResults(results, n=10)
 ```
 As expected this resolves the worst misfitting.
 
-The next misfitting implied coniditonal independence is alcohol _||_ total.sulfur.dioxide. Acetaldehyde plays a role here to as it is the compound that is transformed to alcohol by yeast during the fermentation process. When acetaldehyde is bound by sulphur dioxide though it cannot be transformed into alcohol. Therefore we introduce the connection between total.sulfur.dioxide and alchol.
+The next misfitting implied coniditonal independence is alcohol _||_ total.sulfur.dioxide. Acetaldehyde plays a role here to as it is the compound that is transformed to alcohol by yeast during the fermentation process. When acetaldehyde is bound by sulphur dioxide though it cannot be transformed into alcohol. Therefore we introduce the connection between total.sulfur.dioxide and alcohol.
 
 
 ### Update 2: total.sulfite.dioxide -> alcohol
@@ -286,7 +607,7 @@ Domain-wise, I would find that it makes more sense to fit free.sulfur.dioxide <-
 
 
 
-### Update 3: Implicit latent variable Yeast
+### Update 3: Implicit latent variableresidual.sugar _||_ total.sulfur.dioxide (e.g. Yeast)
 
 #### Just some investigation of the data
 ```{r}
@@ -380,14 +701,7 @@ volatile.acidity -> quality
 plot(graph_white_3)
 ```
 
-#### SEM Fitting of implicit latent variable total.sulfur.dioxide <-> residual.sugar
-```{r}
-lvsem <- toString(graph_white_3,"lavaan") 
-lvsem.fit <- sem(lvsem, data_normalized) 
-summary(lvsem.fit)
-```
-
-#### Test of fit
+#### Test of fit of implicit latent variable total.sulfur.dioxide <-> residual.sugar
 ```{r}
 CorM <- lavCor(data_normalized)
 results <- localTests(graph_white_3, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
@@ -397,12 +711,13 @@ results_ordered
 
 ```{r}
 plotLocalTestResults(results)
+plotLocalTestResults(results, n=10)
 ```
 The last remaining issue to be fixed is citric.acid _||_ fixed.acidity. Its not clear to me how you could explain this domain wise. The data set's paper says with fixed.acidity is the concentration of tartaric acid meant. But technically citric acid is also a fixed (non-volatile) acid and can be found naturally in wine with roughly 1/20 the amount of tartaric acid. This would support a direct edge between the two variables. But citric acid is also added manually as a metal binding agent and then its concentration would be independent of that of tartaric acid.
-I decided to fit it as a latent variabel as the exact conditions are not known.
+I decided to fit it as a latent variable as the exact conditions are not known.
 
 
-### Update 4: citric.acid <-> fixed.acidity
+### Update 4: implicit latent variable citric.acid <-> fixed.acidity
 
 #### Investigation of citric.acid <-> fixed.acidity
 ```{r}
@@ -468,12 +783,6 @@ volatile.acidity -> quality
 plot(graph_white_4)
 ```
 
-#### SEM Fitting of implicit latent variable total.sulfur.dioxide <-> residual.sugar
-```{r}
-lvsem <- toString(graph_white_4,"lavaan") 
-lvsem.fit <- sem(lvsem, data_normalized) 
-summary(lvsem.fit)
-```
 
 #### Test of fit
 ```{r}
@@ -485,29 +794,518 @@ results_ordered
 
 ```{r}
 plotLocalTestResults(results)
+plotLocalTestResults(results, n=10)
 ```
 
+#### Fitting initial SEM
+```{r}
+# Note that there are several edges set 0 as they were implied by lavaan
+
+lvsem <- "
+density~alcohol
+pH~alcohol
+quality~alcohol
+alcohol~chlorides
+density~chlorides
+quality~chlorides
+density~citric.acid
+pH~citric.acid
+quality~citric.acid
+citric.acid ~~ fixed.acidity
+quality~density
+density~fixed.acidity
+pH~fixed.acidity
+quality~fixed.acidity
+quality~free.sulfur.dioxide
+quality~pH
+alcohol~residual.sugar
+density~residual.sugar
+quality~residual.sugar
+total.sulfur.dioxide ~~ residual.sugar
+quality~sulphates
+alcohol~total.sulfur.dioxide
+density~total.sulfur.dioxide
+free.sulfur.dioxide~total.sulfur.dioxide
+pH~volatile.acidity
+quality~volatile.acidity
+
+volatile.acidity ~~ 0*chlorides
+volatile.acidity ~~ 0*sulphates
+sulphates ~~ 0*chlorides
+"
+
+lvsem.fit <- sem(lvsem, data_normalized)
+cg <- coordinates(graph_white_4)
+fg <- lavaanToGraph(lvsem.fit, digits=2)
+coordinates(fg) <- cg
+plot(fg, show.coefficients=TRUE)
+```
+```{r}
+# Extract all parameter estimates
+params <- parameterEstimates(lvsem.fit)
+
+# Filter for both regression (~) and bidirectional (~~) paths
+edge_coeffs <- params[params$op %in% c("~", "~~"), ]
+
+# Sort by magnitude in ascending order
+edge_coeffs_sorted <- edge_coeffs[order(abs(edge_coeffs$est)), ]
+
+# Display relevant columns (lhs, rhs, estimate)
+edge_coeffs_sorted[, c("lhs", "rhs", "est")]
+```
+Pruning was done on in combinations of causal effects.
 
 ### Calculating main causal effects
-```{r}
-graph_white_inference <- lavaanToGraph(lvsem_yeast_fit)
-#impliedCovarianceMatrix(graph_white_inference)
-```
 
+#### General covariance matrix
+```{r}
+graph_white_inference <- lavaanToGraph(lvsem.fit)
+#print(graph_white_inference)
+imCovM <- impliedCovarianceMatrix(graph_white_inference)
+```
 
 Sanity check: Sulphates has no parents. Therefore a simple linear model should get similar results than what inference on our fitted graph finds.
 ```{r}
-print(lm(quality ~ sulphates, data_latent))
+print(lm(quality ~ sulphates, data_normalized))
 print(impliedCovarianceMatrix( graph_white_inference)['sulphates','quality'])
 ```
-seems good, its in the same magnitude.
+seems good, its in the same magnitude. But weird it has a different value
+
+
+#### Function to create interventional graph
+```{r}
+# Function to create interventional graph
+create_interventional_graph <- function(original_graph, variable_of_interest) {
+  # Parse the original graph
+  g <- dagitty(original_graph)
+  
+  # Extract node positions
+  nodes <- names(g)
+  coords <- coordinates(g)
+  node_positions <- sapply(nodes, function(node) {
+    sprintf('%s [pos="%.3f,%.3f"]', node, coords$x[node], coords$y[node])
+  })
+  
+  # Extract edges and beta coefficients from the original graph string
+  # Pattern to match: v ->|<-> w [beta="value"]
+  beta_pattern <- "([a-zA-Z._]+) (->|<->) ([a-zA-Z._]+) \\[beta=\"([-0-9.e]+)\"\\]"
+  betas <- stringr::str_match_all(original_graph, beta_pattern)[[1]]
+  edges <- data.frame(v = betas[, 2], w = betas[, 4], e = betas[,3], beta = betas[, 5], stringsAsFactors = FALSE)
+  
+  # Filter out incoming edges to the variable of interest
+  adjusted_edges <- edges[!(edges$e == "->" & edges$w == variable_of_interest), ]
+  
+  # Check for bidirectional edges and remove the ones involving the variable of interest
+  bidirectional_edges <- edges[edges$e == "<->",]
+  adjusted_bidirectional_edges <- bidirectional_edges[!(bidirectional_edges$v == variable_of_interest | bidirectional_edges$w == variable_of_interest), ]
+  
+  # Combine directed and filtered bidirectional edges
+  adjusted_edges <- rbind(
+    adjusted_edges[adjusted_edges$e == "->", ],
+    adjusted_bidirectional_edges
+  )
+  
+  # Create the adjusted DAG string
+  interventional_graph <- sprintf("dag {\n%s\n}", 
+                          paste(
+                            node_positions,
+                            paste0(
+                              apply(adjusted_edges, 1, function(row) {
+                                if (row["e"] == "->") {
+                                  sprintf("%s -> %s [beta=\"%s\"]", row["v"], row["w"], row["beta"])
+                                } else {
+                                  sprintf("%s <-> %s [beta=\"%s\"]", row["v"], row["w"], row["beta"])
+                                }
+                              }), 
+                              collapse = "\n"
+                            ), 
+                            collapse = "\n"
+                          ))
+  
+  return(dagitty(interventional_graph))
+}
+```
+
+#### Testing the interventional graph function
+```{r}
+# Generate interventional graph for "fixed.acidity"
+intervention_graph <- create_interventional_graph(fg, "density")
+cat(fg) #original graph
+cat(intervention_graph)
+plot(intervention_graph, show.coefficients = TRUE)
+```
+#### Calculating causal effects
+```{r}
+nodes <- names(fg)
+# Initialize a data frame to store the results
+causal_effects <- data.frame(
+  Variable = character(),  # To store variable names
+  CausalEffect = numeric() # To store causal effects
+)
+
+# Iterate over the nodes, skipping the "quality" variable
+for (node in nodes) {
+  if (node == "quality") next  # Skip the "quality" variable
+  
+  # Create the intervention graph
+  intervention_graph <- create_interventional_graph(fg, node)
+  
+  # Calculate the causal effect of the node on quality
+  causal_effect <- impliedCovarianceMatrix(intervention_graph)[node, 'quality']
+  
+  # Append the result to the data frame
+  causal_effects <- rbind(causal_effects, data.frame(Variable = node, CausalEffect = causal_effect))
+}
+
+# Print the final data frame
+#print(causal_effects)
+ce_ordered <- causal_effects[order(-abs(causal_effects$CausalEffect)),]
+print(ce_ordered)
+```
+Therefore our first research question is answered. Listed are the causal effects sorted by size of influence. 
+- Alcohol seems in line with what other researcher found. As alcohol was always in the top rankings of importance
+- density is surprising
+- volatile acidity also seems logical. Acetic acid makes wine taste like vinegar. Its an indicator for spoiled wine. A strong negative effect seems logical though
+- A negative effect of total.sulfur.dioxide also seems reasonable as sulfuric compounds are normally perceived as not pleasant (e.g. rotting eggs smell is due to sulfur compounds)
+- Surprising are citric.acid and residual.sugar and their low scores as these play a large role for the taste of wine. But I guess if the wine is sweet or acidic does not automatically indicate if its good or bad quality but has more characterizing property.
+
+Using polychoric correlations changed some of this:
+- now density has overly large contribution. This does not make much sense. 
+- free.sulfur.dioxide is listed with a positive causal effect which is weird. See the interpretation of total.sulfur dioxide
+- pH has a very low coefficient in the causal effect as well as the SEM model. As the acids in the wine directly influence the quality (in taste in acidity) it makes sense to exclude the relation pH -> quality. It then ends up as a collider in the network which also is logical as it is a mathematical measure of the total acids presents.
+- I would restrain to remove other edges as these are thought to give taste characteristics to the wine. It is informative to know if their effect is small or large.
+
+### SEM Refitting without pH
+```{r}
+# Now pH is also set to 0
+
+lvsem <- "
+density~alcohol
+pH~alcohol
+quality~alcohol
+alcohol~chlorides
+density~chlorides
+quality~chlorides
+density~citric.acid
+pH~citric.acid
+quality~citric.acid
+citric.acid ~~ fixed.acidity
+quality~density
+density~fixed.acidity
+pH~fixed.acidity
+quality~fixed.acidity
+quality~free.sulfur.dioxide
+
+pH ~~ 0*quality
+
+alcohol~residual.sugar
+density~residual.sugar
+quality~residual.sugar
+total.sulfur.dioxide ~~ residual.sugar
+quality~sulphates
+alcohol~total.sulfur.dioxide
+density~total.sulfur.dioxide
+free.sulfur.dioxide~total.sulfur.dioxide
+pH~volatile.acidity
+quality~volatile.acidity
+
+volatile.acidity ~~ 0*chlorides
+volatile.acidity ~~ 0*sulphates
+sulphates ~~ 0*chlorides
+"
+
+lvsem.fit <- sem(lvsem, data_normalized)
+summary(lvsem.fit)
+cg <- coordinates(graph_white_4)
+fg <- lavaanToGraph(lvsem.fit, digits=2)
+coordinates(fg) <- cg
+plot(fg, show.coefficients=TRUE)
+```
+#### Test of fit
+```{r}
+CorM <- lavCor(data_normalized)
+results <- localTests(graph_white_4, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+```{r}
+plotLocalTestResults(results)
+par(mar = c(5, 20, 4, 2))
+plotLocalTestResults(results, n=10, auto.margin=FALSE)
+```
+
+#### Model coefficients
+```{r}
+# Extract all parameter estimates
+params <- parameterEstimates(lvsem.fit)
+
+# Filter for both regression (~) and bidirectional (~~) paths
+edge_coeffs <- params[params$op %in% c("~", "~~"), ]
+
+# Sort by magnitude in ascending order
+edge_coeffs_sorted <- edge_coeffs[order(abs(edge_coeffs$est)), ]
+
+# Display relevant columns (lhs, rhs, estimate)
+edge_coeffs_sorted[, c("lhs", "rhs", "est")]
+```
+#### Recalculating Causal Effects
+```{r}
+nodes <- names(fg)
+# Initialize a data frame to store the results
+causal_effects <- data.frame(
+  Variable = character(),  # To store variable names
+  CausalEffect = numeric() # To store causal effects
+)
+
+# Iterate over the nodes, skipping the "quality" variable
+for (node in nodes) {
+  if (node == "quality") next  # Skip the "quality" variable
+  
+  # Create the intervention graph
+  intervention_graph <- create_interventional_graph(fg, node)
+  
+  # Calculate the causal effect of the node on quality
+  causal_effect <- impliedCovarianceMatrix(intervention_graph)[node, 'quality']
+  
+  # Append the result to the data frame
+  causal_effects <- rbind(causal_effects, data.frame(Variable = node, CausalEffect = causal_effect))
+}
+
+# Print the final data frame
+#print(causal_effects)
+ce_ordered <- causal_effects[order(-abs(causal_effects$CausalEffect)),]
+ce_ordered$CausalEffect <- round(ce_ordered$CausalEffect, 3)
+print(ce_ordered)
+```
+#### Interpretation of causal effects
+
+```{r}
+# Initialize a data frame for denormalized causal effects
+denormalized_effects <- data.frame(
+  Variable = character(),           # Parent variables
+  NormalizedEffect = numeric(),   # Normalized causal effect
+  parent_sd_raw = numeric(),
+  DenormalizedEffect = numeric()  # Denormalized causal effect
+)
+
+# Iterate over the variables (assuming causal_effects is your calculated data frame)
+
+for (i in 1:nrow(causal_effects)) {
+  parent <- causal_effects$Variable[i]
+  #print(parent)
+  normalized_effect <- causal_effects$CausalEffect[i]
+  
+  # Get the standard deviation of the parent variable
+  #print(c(data_raw[parent]))
+  parent_sd <- sd(data_raw[[parent]])
+  #print(parent_sd)
+  
+  # Get the standard deviation of the quality variable
+  child_sd <- sd(as.numeric(data_raw$quality))  # Treat quality as numeric for SD
+  
+  # Denormalize the effect
+  denormalized_effect <- normalized_effect * parent_sd / child_sd
+  
+  # Append to the data frame
+  denormalized_effects <- rbind(denormalized_effects, 
+                                data.frame(
+                                  Variable = parent,
+                                  NormalizedEffect = normalized_effect,
+                                  parent_sd_raw = parent_sd,
+                                  DenormalizedEffect = denormalized_effect
+                                ))
+}
+
+# Round results to three decimals
+denormalized_effects$NormalizedEffect <- round(denormalized_effects$NormalizedEffect, 3)
+denormalized_effects$parent_sd_raw <- round(denormalized_effects$parent_sd_raw, 3)
+denormalized_effects$DenormalizedEffect <- round(denormalized_effects$DenormalizedEffect, 3)
+
+# Sort by the absolute value of the normalized effect
+denormalized_effects <- denormalized_effects[order(-abs(denormalized_effects$NormalizedEffect)), ]
+
+# Print the denormalized causal effects
+print(denormalized_effects)
+```
+
+
+### Investigating low alcohol wine
+#### Where to set the threshold for what we consider low alcohol wine
+```{r}
+d <- data_raw
+sum_alc <- summary(d$alcohol)
+plot( density(d$alcohol) )
+abline(v = sum_alc["Median"], col = "red", lwd = 2, lty = 2)
+legend("topright", 
+       legend = paste("Median =", round(sum_alc["Median"], 2)),
+       col = "red", 
+       lty = 2, 
+       lwd = 2)
+
+d <- data_normalized
+sum_alc <- summary(d$alcohol)
+plot( density(d$alcohol) )
+abline(v = sum_alc["Median"], col = "red", lwd = 2, lty = 2)
+legend("topright", 
+       legend = paste("Median =", round(sum_alc["Median"], 2)),
+       col = "red", 
+       lty = 2, 
+       lwd = 2)
+```
+#### Filtering for the low alcohol wines
+```{r}
+median_normalized_data <- summary(data_normalized$alcohol)["Median"]
+print(median_normalized_data)
+low_alcohol_wines <- data_normalized[data_normalized$alcohol <= median_normalized_data, ]
+# Sanity check
+d <- low_alcohol_wines
+sum_alc <- summary(d$alcohol)
+plot( density(d$alcohol) )
+abline(v = sum_alc["Median"], col = "red", lwd = 2, lty = 2)
+legend("topright", 
+       legend = paste("Median =", round(sum_alc["Median"], 2)),
+       col = "red", 
+       lty = 2, 
+       lwd = 2)
+```
+#### Reusing the same graph structure: Test of fit
+```{r}
+CorM <- lavCor(low_alcohol_wines)
+results <- localTests(graph_white_4, sample.cov = CorM, sample.nobs = nrow(low_alcohol_wines), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+```{r}
+plotLocalTestResults(results)
+```
+#### SEM Fitting
+```{r}
+lvsem <- "
+density~alcohol
+pH~alcohol
+quality~alcohol
+alcohol~chlorides
+density~chlorides
+quality~chlorides
+density~citric.acid
+pH~citric.acid
+quality~citric.acid
+citric.acid ~~ fixed.acidity
+quality~density
+density~fixed.acidity
+pH~fixed.acidity
+quality~fixed.acidity
+quality~free.sulfur.dioxide
+
+pH ~~ 0*quality
+
+alcohol~residual.sugar
+density~residual.sugar
+quality~residual.sugar
+total.sulfur.dioxide ~~ residual.sugar
+quality~sulphates
+alcohol~total.sulfur.dioxide
+density~total.sulfur.dioxide
+free.sulfur.dioxide~total.sulfur.dioxide
+pH~volatile.acidity
+quality~volatile.acidity
+
+volatile.acidity ~~ 0*chlorides
+volatile.acidity ~~ 0*sulphates
+sulphates ~~ 0*chlorides
+"
+
+lvsem.fit <- sem(lvsem, low_alcohol_wines)
+cg <- coordinates(graph_white_4)
+fg <- lavaanToGraph(lvsem.fit, digits=2)
+coordinates(fg) <- cg
+plot(fg, show.coefficients=TRUE)
+```
+
+#### Calculating causal effects
+```{r}
+nodes <- names(fg)
+# Initialize a data frame to store the results
+causal_effects_lowA <- data.frame(
+  Variable = character(),  # To store variable names
+  CausalEffect = numeric() # To store causal effects
+)
+
+# Iterate over the nodes, skipping the "quality" variable
+for (node in nodes) {
+  if (node == "quality") next  # Skip the "quality" variable
+  
+  # Create the intervention graph
+  intervention_graph <- create_interventional_graph(fg, node)
+  
+  # Calculate the causal effect of the node on quality
+  causal_effect <- impliedCovarianceMatrix(intervention_graph)[node, 'quality']
+  
+  # Append the result to the data frame
+  causal_effects_lowA <- rbind(causal_effects_lowA, data.frame(Variable = node, CausalEffect = causal_effect))
+}
+
+# Print the final data frame
+#print(causal_effects)
+ce_ordered_lowA <- causal_effects_lowA[order(-abs(causal_effects_lowA$CausalEffect)),]
+ce_ordered_lowA$CausalEffect <- round(ce_ordered_lowA$CausalEffect, 3)
+print(ce_ordered_lowA)
+```
+#### Merging results into one DataFrame
+```{r}
+combined_effects <- data.frame(
+    Variable = causal_effects$Variable,
+    All_Data = causal_effects$CausalEffect,
+    Low_Alcohol = causal_effects_lowA$CausalEffect
+)
+
+combined_effects$Difference <-  combined_effects$Low_Alcohol - combined_effects$All_Data
+
+# Sort by absolute difference (in descending order)
+combined_effects_sorted <- combined_effects[order(-abs(combined_effects$Difference)), ]
+
+# If you want to round the numeric columns to make it more readable:
+combined_effects_sorted$All_Data <- round(combined_effects_sorted$All_Data, 3)
+combined_effects_sorted$Low_Alcohol <- round(combined_effects_sorted$Low_Alcohol, 3)
+combined_effects_sorted$Difference <- round(combined_effects_sorted$Difference, 3)
+combined_effects_sorted
+```
+- The approach we took for the analysis is not correct. As we assume linear relationships in the data the split we made does not really make sense. 
+- The low subset should show similar results as the high one
+- but it does not especially for chlorides -> non linear relationship can be seen in the data for high alcohol data
+- and for residual sugars -> outlier in high alcohol subset
+
+### Outlier
+```{r}
+max_sugar <- max(data_raw$residual.sugar)
+print(max_sugar)
+data_no_outlier <- data_raw[data_raw$residual.sugar != max_sugar,]
+data_normalized_no_outlier <- data_no_outlier
+
+# Ordered factor for quality, such that lavaan applies polychoric relationship for quality
+data_normalized_no_outlier$quality <- ordered(data_normalized$quality, levels = sort(unique(data_normalized_no_outlier$quality)))
+data_normalized_no_outlier[ , 1:(ncol(data_normalized_no_outlier) - 1)] <- scale(data_raw[ , 1:(ncol(data_raw) - 1)]) # scaling
+
+CorM <- lavCor(data_normalized_no_outlier)
+results <- localTests(graph_white, sample.cov = CorM, sample.nobs = nrow(data_normalized_no_outlier), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+
+```{r}
+plotLocalTestResults(results)
+plotLocalTestResults(results, n=10)
+```
 
 
 ## Omitted code
 
 ### Experiment 4.1: Latent modeling of Fermentation -> Failed
 ```{r}
-graph_white_4 <- dagitty('dag {
+graph_white_7 <- dagitty('dag {
 bb="0,0,1,1"
 alcohol [pos="0.713,0.893"]
 chlorides [pos="0.165,0.786"]
@@ -554,7 +1352,7 @@ U.Fermentation -> alcohol
 # total.sulfur.dioxide -> alcohol
 # residual.sugar -> alcohol
 
-plot(graph_white_4)
+plot(graph_white_7)
 ```
 
 
@@ -601,15 +1399,15 @@ lvsem_fermentation_fit <- sem(lvsem_fermentation, data_normalized)
 ```
 #### Add latent variable to dataset
 ```{r}
-data_latent <- data_normalized
-latent_values <- predict(lvsem_fermentation_fit) 
-data_latent$U.Fermentation <- as.numeric(latent_values)
-head(data_latent)
+# data_latent <- data_normalized
+# latent_values <- predict(lvsem_fermentation_fit) 
+# data_latent$U.Fermentation <- as.numeric(latent_values)
+# head(data_latent)
 ```
 
 ```{r}
 # Check variance of each variable
-apply(data_latent, 2, var)
+# apply(data_latent, 2, var)
 ```
 
 

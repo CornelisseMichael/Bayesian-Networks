@@ -1,0 +1,942 @@
+---
+title: "BCNI Code Examples"
+output: html_notebook
+---
+
+# R Markdown Example
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*.
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+# Exercises with Coding
+
+## Problem 1.3
+
+```{r}
+simpson.simulator <- function(N,s,ce){
+	Z1 <- rnorm(N,0,s)
+	Z3 <- rnorm(N,0,s) + Z1 # depends on Z1
+	Z5 <- rnorm(N,0,s) + Z3 # depends on Z3
+	U <- rnorm(N,0,s) + Z1
+	Z4 <- rnorm(N,0,s) + Z5 + U # U is a random noise term
+	Z2 <- rnorm(N,0,s) + Z3 + U
+	X <- rnorm(N,0,s) + U
+	Y <- rnorm(N,0,s) + ce*X + 10*Z5 # outcome depends on causal effect*X and constant*Z5
+	data.frame(Y,X,Z1,Z2,Z3,Z4,Z5) # creates a dataframe
+}
+
+# 1st parameter (N): sample size
+# 2nd parameter (s): noise standard deviation
+# 3rd parameter (ce): true causal effect (of the variable X on the outcome Y)
+D <- simpson.simulator(1000,0.01,1) 
+
+# unadjusted estimate
+m <- lm(D[,1:2]) # linear model of Y(col1) and X(col2) without taking other variables into account
+# m <- lm(Y ~ X, data = D) # easier alternative
+summary(m) # prints coefficient, intercept estimation etc.
+ci <- confint(m,'X') # confidence interval of the estimated coefficient of X
+
+
+# Plot result
+plot( coef(m)['X'], 1, yaxt='n', bty='n', 
+  xlab='X coefficient', ylab='', xlim=c(-5,5), 
+  panel.first=abline(v=1,col=2), pch=19 )
+segments( x0=ci[1], x1=ci[2], y0=1, y1=1 ) 
+
+# coef(m)['X'] extracts the estimated coefficient of X.
+# 1: The y-coordinate is fixed at 1 (a single point is plotted).
+# yaxt='n': Disables the y-axis.
+# bty='n': Removes the box around the plot.
+# xlab='X coefficient': Sets the label for the x-axis.
+# ylab='': No label for the y-axis.
+# xlim=c(-5,5): Sets the x-axis limits from -5 to 5.
+# panel.first=abline(v=1, col=2): Draws a vertical reference line at X = 1 (since the true effect is 1).
+# pch=19: Plots the point as a solid circle.
+# segments: This line adds a horizontal segment that represents the confidence interval (ci) for the coefficient of X. The segment is drawn between the lower (ci[1]) and upper (ci[2]) bounds of the confidence interval at the y-position of 1.
+```
+
+```{r}
+# Fit a linear model with both X and Z1 as predictors
+m_with_Z1 <- lm(Y ~ X + Z1, data = D)
+
+# Show the summary of the model
+summary(m_with_Z1)
+
+# Get the confidence intervals for the coefficients
+ci_with_Z1 <- confint(m_with_Z1)
+
+# Plot result
+plot(coef(m_with_Z1)['X'], 1, yaxt='n', bty='n', 
+     xlab='X coefficient', ylab='', xlim=c(-5,5), 
+     panel.first=abline(v=1,col=2), pch=19 )
+segments(x0=ci_with_Z1['X', 1], x1=ci_with_Z1['X', 2], y0=1, y1=1)
+```
+
+```{r}
+# Fit a linear model with both X and Z1 as predictors
+m_with_Z1 <- lm(Y ~ X + Z1 + Z2, data = D)
+
+# Show the summary of the model
+summary(m_with_Z1)
+
+# Get the confidence intervals for the coefficients
+ci_with_Z1 <- confint(m_with_Z1)
+
+# Plot result
+plot(coef(m_with_Z1)['X'], 1, yaxt='n', bty='n', 
+     xlab='X coefficient', ylab='', xlim=c(-5,5), 
+     panel.first=abline(v=1,col=2), pch=19 )
+segments(x0=ci_with_Z1['X', 1], x1=ci_with_Z1['X', 2], y0=1, y1=1)
+```
+
+# R-companion
+
+## Chapter 1 - BN and the Do-Calculus
+
+```{r}
+library(bayesianNetworks)
+```
+
+
+### Generating some artificial data to work with
+
+```{r}
+set.seed(123) 
+sprinkler_data <- simulate_sprinkler( 500 )
+print( ftable(sprinkler_data, row.vars=1:4) )
+```
+
+
+### Building a BN with gRain package
+
+```{r}
+# install.packages("gRain")
+library( gRain )
+```
+
+
+### Building BN manually
+
+```{r}
+# this code makes a conditional probability table (cpt)
+cloudy <- cptable( ~cloudy, values=c(50,50), levels=c("no", "yes") ) 
+sprinkler <- cptable( ~sprinkler : cloudy, values=c( 50, 50, 90, 10 ), levels=c("no", "yes") ) 
+# c no, s no: 0.5; c no, s yes: 0.5, c yes, s no: 0.9; c no, s yes: 0.1
+rain <- cptable( ~rain : cloudy, values=c( 80, 20, 20, 80 ), levels=c("no", "yes") ) 
+wetgrass <- cptable( ~wetgrass : sprinkler : rain, values=c( 99, 1, 10, 90, 10, 90, 1, 99 ), levels=c("no", "yes"))
+
+cpts <- compileCPT( list( cloudy, sprinkler, rain, wetgrass ) )
+cpts
+```
+
+```{r}
+# this converts the table into a bayesian network
+bnet <- grain( cpts )
+print(querygrain(bnet)$cloudy)
+```
+
+```{r}
+# Making bnets with given evidence. These queries reproduce the data we fed into the table
+bnet_e <- setEvidence( bnet, evidence=list(cloudy="yes") ) 
+print( querygrain( bnet_e )$sprinkler )
+bnet_e <- setEvidence( bnet, evidence=list(cloudy="no") ) 
+print( querygrain( bnet_e )$sprinkler )
+bnet_e <- setEvidence( bnet, evidence=list(sprinkler="no", rain="no") ) 
+print( querygrain( bnet_e )$wetgrass )
+bnet_e <- setEvidence( bnet, evidence=list(sprinkler="yes", rain="yes") ) 
+print( querygrain( bnet_e )$wetgrass )
+```
+
+```{r}
+# querying "against the flow"
+bnet_e <- setEvidence( bnet, evidence=list(wetgrass="yes") ) 
+print( querygrain( bnet_e )$cloudy )
+cat("\n")
+
+# "correlation" between rain and sprinkler activity
+bnet_e <- setEvidence( bnet, evidence=list(rain="yes") )
+cat("Rain = yes \n")
+print( querygrain( bnet_e )$sprinkler )
+cat("\n")
+cat("Rain = no \n")
+print( querygrain( setEvidence( bnet, evidence=list(rain="no") ) )$sprinkler )
+# It seems like there is a negative correlation. If rain = yes, sprinkler = yes has a low probability. When rain = no, sprinkler = yes becomes twice as likely. But this is due to the common cause cloudy. We decide in the morning from the cloudiness in the morning if we turn on the sprinkler and not from the status of rain. There is no causal relationship between rain and sprinkler. To prove this we can use the do-operator.
+```
+
+```{r}
+# Do-operator, proving there is no relationship between sprinkler and rain
+# "
+do_rain <- cptable( ~rain, values=c(50,50), levels=c("no", "yes") ) 
+cpts_do_rain <- compileCPT( list( cloudy, sprinkler, do_rain, wetgrass ) )
+bnet_do_rain <- grain( cpts_do_rain )
+print( querygrain( setEvidence( bnet_do_rain, evidence=list(rain="yes") ) )$sprinkler )
+print( querygrain( setEvidence( bnet_do_rain, evidence=list(rain="no") ) )$sprinkler )
+# Whether it rains or not has no influence on the sprinkler variables. Hence, there is no relationship between them.
+```
+
+
+### Obtaining probability tables from data
+
+```{r}
+# creating dag structure for the data set, names must exactly match names in data
+sprinkler_dag <- dag( ~ Cloudy + Rain:Cloudy + Sprinkler:Cloudy + WetGrass:Sprinkler:Rain )
+# extract cpt given dag structure
+sprinkler_cpt <- extractCPT( sprinkler_data, sprinkler_dag )
+# make bn out of it
+bnet_est <- grain( compileCPT( sprinkler_cpt ) )
+
+# again, check "correlation" between rain and sprinkler
+cat("Unadjusted data set shows negative correlation \n")
+cat("Rain = yes \n")
+querygrain( setEvidence( bnet_est, evidence=list(Rain="TRUE") ) )$Sprinkler
+cat("\n")
+cat("Rain = no \n")
+querygrain( setEvidence( bnet_est, evidence=list(Rain="FALSE") ) )$Sprinkler
+cat("\n")
+
+# again implement do-operator to prove there is no relationship
+sprinkler_cpt$Rain <- cptable( ~Rain, values=c(50,50), levels=c("FALSE", "TRUE"))
+bnet_est_do_rain <- grain( compileCPT( sprinkler_cpt ) )
+cat("Do-Operator deployed, no causal relationship between rain and sprinkler \n")
+cat("Rain = yes \n")
+querygrain( setEvidence( bnet_est_do_rain, evidence=list(Rain="TRUE") ) )$Sprinkler
+cat("\n")
+cat("Rain = no \n")
+querygrain( setEvidence( bnet_est_do_rain, evidence=list(Rain="FALSE") ) )$Sprinkler
+```
+
+### Questions
+
+```{r}
+# What is the causal effect of “rain” on “wetgrass” in the sprinkler model and how does this differ from
+# the observed relationship?
+```
+
+```{r}
+# Specifically, is the causal effect stronger or weaker than one would think
+# without taking the confounding by “cloudy” into account?
+```
+
+## Chapter 2 - Naive and Optimal Bayes Prediction
+
+### Generating some artificial data to work with
+
+```{r}
+library( bayesianNetworks )
+set.seed(123)
+training.data <- simulate_sprinkler( 500 )
+test.data <- simulate_sprinkler( 1000 )
+```
+
+### Using logistic regression to predict whether the grass is wet
+
+```{r}
+# fitting to training data
+m <- glm( WetGrass ~ Cloudy + Rain + Sprinkler, data=training.data, family="binomial" )
+summary(m)
+```
+
+```{r}
+# Training data
+y <- predict( m, newdata=training.data, type="response" )
+library( pROC )
+auc( training.data$WetGrass, y )
+plot( roc(training.data$WetGrass,y) )
+```
+
+```{r}
+# Test data
+y <- predict( m, newdata=test.data, type="response" )
+auc( test.data$WetGrass, y )
+plot( roc(test.data$WetGrass,y) )
+# auc of 93%, that is quiet good
+```
+
+### Using Naive Bayes to predict whether the grass is wet
+
+```{r}
+library(naivebayes)
+m <- naive_bayes( WetGrass ~ Cloudy + Rain + Sprinkler, data=training.data )
+m
+```
+
+```{r}
+# Test set predictions
+y <- predict( m, newdata=test.data, type="prob" )
+head(y)
+y <- y[,2] # discard first column
+auc( test.data$WetGrass, y) # 0.9268
+plot( roc(test.data$WetGrass,y) )
+# tiny bit worse than logistic regression. But the difference lies within the uncertainty 
+# therefore we cannot really conlcude that the models are actually different.
+```
+
+### Optimal Bayes
+
+```{r}
+m <- optimal_bayes( WetGrass ~ Cloudy + Rain + Sprinkler, data=training.data )
+m
+y <- predict( m, newdata=test.data )
+head(y)
+y <- y[,2]
+auc( test.data$WetGrass, y ) # 0.9323
+plot( roc(test.data$WetGrass,y) )
+```
+
+### Questions
+
+```{r}
+# What happens to the performance of logistic regression and naive Bayes 
+# if you change the size of the test set?
+```
+
+
+## Chapter 3 - Structural Equation Models
+
+### Fitting a simple structrual equation model
+
+```{r}
+library(lavaan)
+hsb2 <- read.table(header=T, sep=",",
+'https://stats.idre.ucla.edu/wp-content/uploads/2016/02/hsb2-2.csv')
+head( hsb2 )
+```
+
+```{r}
+# inspecting the data type of variable write -> numerical 
+range( hsb2$write )
+plot( density( hsb2$write ) )
+```
+
+```{r}
+# fitting structural equations model
+mdl <- sem( "science ~ read + write + math
+math ~ read + write
+read ~~ 0*write", # This is necessary! Defining theres no relationship between read and write
+data=hsb2 )
+summary( mdl )
+# This is on the unscaled data. What do the coefficients mean?
+# What are the underlying 
+```
+
+### Fitting a sttructural equation model on mixed data
+
+```{r}
+d <- read.csv("afd-votes-2017.csv")
+# The weird formula for the color is used to show west in blue (=color 4 in R)
+# and east in red (=color 1)
+plot( afd_vote ~ christian, col=2*(2-east), data=d, pch=19 )
+# Add regression line for overall relationship ..
+abline( lm( afd_vote ~ christian, d ) )
+# .. in east only ..
+abline( lm( afd_vote ~ christian, d[d$east==1,] ), col=2 )
+# .. and in west only
+abline( lm( afd_vote ~ christian, d[d$east==0,] ), col=4 )
+```
+
+```{r}
+lm( afd_vote ~ christian + east, d ) 
+lm( christian ~ east, d )
+```
+
+What do the values on the edges mean exactly? (Think about it like this: if you change the start variable of the arrow, how strongly will that affect the end variable?)
+
+-   the negative path coefficient east-\> christian indicates that it becomes much more unlikely to be christian if you are east German
+
+-   also being east German strongly increases the chance of being an AfD-Voter (16)
+
+-   now you can also see that the religion has not much of an influence on the AfD-Voting (0.08)
+
+Why does the effect of the variable “christian” look so much weaker now than the effect of the variable “east"?\\
+
+-   east was the confounder which we adjusted for now
+
+### Effect of normalization on the election data
+
+```{r}
+d$afd_vote <- scale( d$afd_vote )
+d$christian <- scale( d$christian )
+# regression using lavaan package
+mdl <- sem( "
+afd_vote ~ east + christian
+christian ~ east
+", d )
+summary( mdl )
+```
+
+What do these coefficients means?
+
+=> Since the variables are standardized, each coefficient represents the effect in terms of standard deviations
+
+East → Christian: -2.258
+
+-   like before it indicates a negative relationship
+
+-   Since the coefficient is standardized, this concerns a one-unit increase in the variable "East". So east=0 (Wessi) changed to east=1 (Ossi)
+
+-   Increasing one-unit in east, corresponds with a 2.258 standard deviation decrease in the "Christian" variable.
+
+-   this has the same interpretation as before. Being east German makes it much less likely to be christian.
+
+East → AfD Vote: 2.897
+
+- similar interpretation as with christian but now positive
+
+Christian → AfD Vote: 0.322
+
+- As the data is standardized it is now even clearer (because better comparable) that the effect of being christian is much smaller than being east German
+
+
+### The do-operator with SEMs
+
+What’s the effect of the share of christian voters on the vote share of the AFD?
+
+```{r}
+# naive approach with a simple regression
+lm( afd_vote ~ christian, d )
+```
+The resulting negative correlation is the same as we plotted before where the Simpsons paradox was highlighted for this dataset. To remove this confounding the do-operator is used.
+
+```{r}
+mdl_do <- sem( "
+afd_vote ~ east + christian
+", d ) # deleted christian ~ east
+summary(mdl_do)
+```
+
+
+More complicated inference with multiple treks can be done via dagitty
+
+```{r}
+library( dagitty )
+g <- lavaanToGraph( mdl, digits=4 ) # Convert lavaan model to dagitty
+# digits defines parameter precision, only use this for plotting!
+g
+```
+```{r}
+impliedCovarianceMatrix( g ) # assumes all residual variances are set to values that generate a variance of 1 for all observed variables
+```
+
+
+Do-operations with dagitty
+
+```{r}
+g_do <- 'dag {
+ afd_vote
+ christian
+ east
+ christian -> afd_vote [beta="0.3218"]
+ east -> afd_vote [beta="2.897"]
+}'
+impliedCovarianceMatrix( g_do )['christian','afd_vote']
+```
+Same result as we got before from the manual do-operator.
+
+Now do-operation for east -> afd_vote
+```{r}
+impliedCovarianceMatrix( g )['east','afd_vote'] # dagitty do-operation
+lm( afd_vote ~ east, d ) # simple regression as before
+```
+As the interventional graph will be the same as the original graph the do-operator finds the same result as the naive regression. As east has no parents you don't intervene on any incoming arrows.
+
+
+## Chapter 4 - Latent Variables
+
+This chapter concerns latent variables in linear-Gaussian Bayesian networks, also known as structural equation models (SEMs)
+
+### Building a simple path model
+
+```{r}
+hsb2 <- read.table('https://stats.idre.ucla.edu/wp-content/uploads/2016/02/hsb2-2.csv', header=T, sep=",")
+head(hsb2)
+hsb2 <- as.data.frame(scale(hsb2[,c("read","write","math","science")])) # Normalizing
+```
+```{r}
+dag1 <- graphLayout(dagitty("dag{{read write} -> {math->science}}"))
+plot(dag1)
+```
+```{r}
+cor.test( hsb2[['read']], hsb2[['write']] )
+```
+The graph suggests that there should be no correlation between read and write but the data shows there is.
+
+
+### Fitting implicit latent variables
+
+We add an implicit variable between read and write to counter the found correlation.
+```{r}
+dag2 <- graphLayout(dagitty("dag{{read <-> write} -> {math->science}}"))
+plot(dag2)
+```
+
+Then we use lavaan to fit the updated model
+```{r}
+lvsem <- toString(dag2,"lavaan") 
+lvsem.fit <- sem(lvsem,hsb2) 
+summary(lvsem.fit)
+```
+The correlation between read <-> write is the same as the basic correlation calculated earlier!
+
+
+### Estimating the values of latent variables
+
+```{r}
+dag3 <- graphLayout(dagitty("dag{U [latent] U -> {read write} -> {math->science}}")) 
+plot(dag3)
+```
+Fit this model via lavaan
+```{r}
+lvsem3 <- toString(dag3,"lavaan")
+lvsem3.fit <- sem(lvsem3,hsb2)
+```
+The model is not identified (several combinations can explain the same covariance) and can therefore not be fitted. We resolve this in the same way as in the lecture. We put the constraint that we imply that both coefficients coming from U are equal. That way we have one parameter to fit.
+
+```{r}
+cat(lvsem3)
+# =~ indicates a latent variable
+# U and read and write have different coefficients here
+```
+
+Now we make the coefficients outgoing from U equal. Here we call the coefficient "l"
+```{r}
+lvsem3 <- "
+U =~ l*read
+U =~ l*write
+science~math
+math~read
+science~read
+math~write
+science~write
+"
+```
+
+Now the model is identified and can be fitted
+```{r}
+lvsem3.fit <- sem(lvsem3,hsb2)
+```
+
+```{r}
+head(hsb2)
+hsb2$U <- as.numeric(predict(lvsem3.fit))
+head(hsb2)
+```
+```{r}
+CorM <- lavCor(hsb2)
+results <- localTests(dag3, sample.cov = CorM, sample.nobs = nrow(hsb2), abbreviate.names = FALSE)
+results_ordered <- results[order(-abs(results$estimate), results$p.value),]
+results_ordered
+```
+
+```{r}
+plotLocalTestResults(results)
+```
+
+
+### Example application
+
+```{r}
+library( bnlearn )
+net3 <- model2network(toString(dag3,"bnlearn")) 
+fit3 <- bn.fit( net3, hsb2 )
+fit3
+```
+```{r}
+rbn( fit3, n=5 )
+```
+
+
+## Chapter 5 - Polychoric Correlations for Ordinal Data
+
+### Building a DAG with both continuous and discrete variables
+
+```{r}
+d <- read.csv('adult.csv')
+g <- dagitty('dag {
+bb="-4.642,-3.798,3.662,3.731"
+Age [pos="-2.030,-2.640"]
+Education [pos="1.359,0.455"]
+HoursPerWeek [pos="-0.607,-0.125"]
+Immigrant [pos="1.065,-2.590"]
+Income [pos="-1.620,2.722"]
+MaritalStatus [pos="-3.674,-2.640"]
+Race [pos="3.016,-2.540"]
+Sex [pos="-0.519,-2.607"]
+Age -> { Education HoursPerWeek Income MaritalStatus } Education -> Income
+HoursPerWeek -> Income
+Immigrant -> { Education HoursPerWeek }
+Immigrant <-> Race
+MaritalStatus -> Income
+Race -> Education
+Sex -> { Education HoursPerWeek }
+}')
+plot(g)
+```
+
+
+### Preprocessing for polychoric correlations
+
+For these variables the assumption that their nature is actually continuous seems valid.
+```{r}
+d$Age <- ordered( d$Age, levels=c("<20","20-34","35-49","50-65",">65") ) 
+d$Education <- ordered( d$Education, levels=c("Non-HS-Grad","HS-grad",
+"College-Associate","Academic-Degree"))
+d$Income <- ordered( d$Income, c("<=50K",">50K") )
+d$HoursPerWeek <- ordered( d$HoursPerWeek, c("<20","20-39","40",">40") )
+```
+
+These variables are not continuous in nature, so polychoric correlations cannot be used here. But they are only binary and therefore can still be used (via one-hot encoding I think)
+```{r}
+d$Race <- as.numeric( ordered( d$Race, c("White","Non-White") ) ) 
+d$Sex <- as.numeric( ordered( d$Sex, c("Male","Female") ) ) 
+d$Immigrant <- as.numeric( ordered( d$Immigrant, c("no","yes") ) )
+```
+
+Problematic is MaritalStatus because it has three instances and not continuous but categorical in nature
+```{r}
+table(d$MaritalStatus)
+```
+
+We simply make it binary by only distinguishing married or not married.
+```{r}
+d$MaritalStatus <- as.integer( d$MaritalStatus == "Is-Married" )
+```
+
+Now all data is fit as if we were dealing with only continuous variables. Therefore we can use standard SEM
+```{r}
+# Extract polychoric correlation matrix
+M <- lavCor(d) 
+M
+```
+```{r}
+fit <- sem( toString(g,"lavaan"), sample.cov=M, sample.nobs=nrow(d) )
+summary(fit)
+```
+
+Plotting
+```{r}
+cg <- coordinates(g)
+fg <- lavaanToGraph(fit, digits=2) 
+coordinates(fg) <- cg
+plot(fg, show.coefficients=TRUE)
+```
+
+
+## Chapter 6 - Canonical Correlation Analysis
+
+### Building a DAG with both continuous and discrete variables
+
+```{r}
+library(fastDummies) # used by dagitty for dummy coding
+library(CCP) # used by dagitty to compute p-values for canonical correlation coefficients
+
+d <- read.csv("adult.data",header=FALSE, 
+              na.strings="?",sep=",",strip.white=TRUE,stringsAsFactors=TRUE)
+colnames(d) <- c("Age","Workclass","Fnlwgt","Education","EducationNum", "MaritalStatus","Occupation","Relationship","Race","Sex","CapitalGain", "CapitalLoss","HoursPerWeek","NativeCountry","Income")
+# “Fnlwgt”, “CapitalGain”,“CapitalLoss”,“Relationship”, and “MaritalStatus” are omitted for this example
+```
+
+Preprocessing
+```{r}
+# Tell R about which variables are ordinal
+d$Education <- as.integer(d$EducationNum) # ordinal variable “Education” by coding it as an integer, which may not be ideal
+d$Income <- ordered(d$Income)
+
+d <- d[,-which(colnames(d)=="EducationNum")]
+
+d$NativeCountry <- as.character( d$NativeCountry ) 
+d$NativeCountry[!d$NativeCountry %in% c("United-States","Mexico")] <- "Other" 
+d$NativeCountry <- factor( d$NativeCountry )
+
+# Drop rows containing missing data
+d <- d[complete.cases(d),]
+```
+
+DAG for this dataset
+```{r}
+g <- dagitty('
+dag {
+bb="0,0,1,1"
+Age [pos="0.7,0.203"]
+Education [pos="0.147,0.368"]
+HoursPerWeek [pos="0.602,0.562"]
+Income [pos="0.4,0.730"]
+NativeCountry [pos="0.193,0.197"]
+Occupation [pos="0.2,0.571"]
+Sex [pos="0.483,0.190"]
+Workclass [pos="0.870,0.580"]
+Age -> { Education HoursPerWeek Workclass }
+Education -> { HoursPerWeek Income Occupation Workclass } HoursPerWeek -> Income
+NativeCountry -> Education
+Occupation -> { HoursPerWeek Income }
+Sex -> { Education HoursPerWeek Income }
+Workclass -> { HoursPerWeek Income }
+}
+')
+plot(g)
+```
+
+Lavaan cannot be used for this data as it only allows categorial values for nodes without parents (see east Germany example). Instead they use this code for computing canonical correlations:
+```{r}
+r <- c()
+for( n in names(g) ){
+  for( p in dagitty::parents(g,n) ){
+    otherparents <- setdiff( dagitty::parents(g,n), p ) 
+    tst <- ciTest( X=n, Y=p, Z=otherparents, d,
+      type="cis.pillai" )
+    r <- rbind( r, data.frame(list(X=p,A="->",Y=n,
+      cor=tst[,"estimate"],p=tst[,"p.value"])) )
+  } 
+}
+r
+```
+Plotting
+```{r}
+# converting to dagitty formatted string
+r.dagitty <- paste(r$X, r$A, r$Y, "[beta=",signif(r$cor,2),"] ", collapse="\n") 
+g_with_coefficients <- dagitty( r.dagitty ) 
+coordinates( g_with_coefficients ) <- coordinates( g ) 
+plot( g_with_coefficients, show.coefficients=TRUE )
+```
+The plot shows that for example the edge between Sex and Education can probably be omitted.
+
+
+## Chapter 7 - Testing Causal Diagrams
+
+```{r}
+library( dagitty )
+library( bayesianNetworks )
+```
+
+### Discovering causal diagram misspecifications
+
+Showing implied Conditional Independencies
+```{r}
+g <- graphLayout(dagitty("dag{FI->{LE MD}->D MG->{MD D}}"))
+impliedConditionalIndependencies(g)
+```
+
+###Data loading and non-conditional independence tests
+
+#### Small Recap on Chi-Square test:
+
+- is for categorical data
+
+- generates a null distribution in which the variables of interest are independent
+
+- the real data is then compared to the null distribution with the X^2 formular (X^2 is also called residuals in the slides)
+
+- the sum of these residuals is chi-squared, which looks like X^2
+
+- then you apply a statistical test and get the   p-value = 1 - pchisq(chi-square, degrees_of_freedom)
+
+- for several categories you combine p-values to avoid multiple testing
+
+
+for LE _||_ MG
+```{r}
+d <- read.csv("diabetes.csv")
+chisq.test( d$LE, d$MG ) # Graph indicates full independence. The p-value supports this.
+# The p-value expresses that the probability of LE being independent of MG with the given data is 65.6% and therefore very likely.
+```
+for FI _||_ MG
+```{r}
+chisq.test( d$FI, d$MG ) # this independence seems unlikely, given the low p-value
+```
+
+### Conditional independence tests
+
+for LE _||_ MD | FI
+```{r}
+chisq <- 0 ; df <- 0
+for( x in unique(d$FI) ){ # per FI value
+  tst <- chisq.test( d$LE[d$FI==x], d$MD[d$FI==x] ) # you get a test statistic between LE and MD per FI value
+  chisq <- chisq + tst$statistic # combine these test statistics into a single value
+  df <- df + tst$parameter # and count total degrees of freedom 
+} 
+chisq # final test statistic
+```
+```{r}
+df # total degrees of freedom
+```
+```{r}
+1-pchisq(chisq,df) # why the heck is this called X^2? I think this should be a p-value
+```
+Not sure if this is actually a low X^2 or high p-value. Either way it would indicate that LE _||_ MD | FI seems valid. Looking at the results of the automated test this indeed seems like the p-value.
+
+
+### Automated test for Conditional Independencies
+```{r}
+localTests(g, d, type="cis.chisq")
+```
+Family income and MaternalGenetics fail the test according to this table. The data suggests that they are dependent.
+
+
+### Model testing using polychoric correlations
+
+Loading and preprocessing in Chapter 5 - Polychoric Correlations ...
+```{r}
+d <- read.csv('adult.csv')
+d$Age <- ordered( d$Age, levels=c("<20","20-34","35-49","50-65",">65") ) 
+d$Education <- ordered( d$Education, levels=c("Non-HS-Grad","HS-grad",
+"College-Associate","Academic-Degree"))
+d$Income <- ordered( d$Income, c("<=50K",">50K") )
+d$HoursPerWeek <- ordered( d$HoursPerWeek, c("<20","20-39","40",">40") ) 
+d$Race <- as.numeric( ordered( d$Race, c("White","Non-White") ) )
+d$Sex <- as.numeric( ordered( d$Sex, c("Male","Female") ) )
+d$Immigrant <- as.numeric( ordered( d$Immigrant, c("no","yes") ) ) 
+d$MaritalStatus <- as.integer( d$MaritalStatus == "Is-Married" )
+
+g <- dagitty('dag {
+bb="-4.642,-3.798,3.662,3.731"
+Age [pos="-2.030,-2.640"]
+Education [pos="1.359,0.455"]
+HoursPerWeek [pos="-0.607,-0.125"]
+Immigrant [pos="1.065,-2.590"]
+Income [pos="-1.620,2.722"]
+MaritalStatus [pos="-3.674,-2.640"]
+Race [pos="3.016,-2.540"]
+Sex [pos="-0.519,-2.607"]
+Age -> { Education HoursPerWeek Income MaritalStatus } Education -> Income
+HoursPerWeek -> Income
+Immigrant -> { Education HoursPerWeek }
+Immigrant <-> Race
+MaritalStatus -> Income
+Race -> Education
+Sex -> { Education HoursPerWeek }
+}')
+
+plot(g)
+```
+
+Automated chi-square testing
+```{r}
+localTests(g,d, type='cis.chisq')
+```
+Attention: This is not the best result due to the binned categories.
+
+- for example look at Edct _||_ HrPW | Age, Immg, Sex where 171 DoF were needed. This stems from the fact that age is binned in many categories instead of it being a continuous variable. 
+
+- The chi-square test requires as a rule of thumb at least 5 samples per category (due to central limit theorem). Therefore the results of this test are probably unreliable.
+
+- to resolve this we need to use polychoric correlations to estimate a continuous correlation of the binned data
+
+
+Testing with polychoric relations -> linear regression coefficients
+```{r}
+M <- lavCor(d) # Polychoric correlation matrix
+# Test model using polychoric correlation matrix
+results <- localTests( g, sample.cov=M, sample.nobs=nrow(d) )
+results
+```
+```{r}
+plotLocalTestResults( results )
+```
+
+
+### Model testing using canonical correlations
+
+Again, refer back to Chapter 6, preprocessign was done in the same way there.
+```{r}
+d <- read.csv("adult.data",header=FALSE, na.strings="?",sep=",",strip.white=TRUE,stringsAsFactors=TRUE)
+colnames(d) <- c("Age","Workclass","Fnlwgt","Education","EducationNum", "MaritalStatus","Occupation","Relationship","Race","Sex","CapitalGain", "CapitalLoss","HoursPerWeek","NativeCountry","Income")
+d$Education <- as.integer(d$EducationNum)
+d$Income <- ordered(d$Income)
+d <- d[,-which(colnames(d)=="EducationNum")]
+d$NativeCountry <- as.character( d$NativeCountry ) 
+d$NativeCountry[!d$NativeCountry %in% c("United-States","Mexico")] <- "Other" 
+d$NativeCountry <- factor( d$NativeCountry )
+
+# Drop rows containing missing data
+d <- d[complete.cases(d),]
+```
+
+Defining DAG
+```{r}
+g <- dagitty('
+dag {
+bb="0,0,1,1"
+Age [pos="0.7,0.203"]
+Education [pos="0.147,0.368"] HoursPerWeek [pos="0.602,0.562"] Income [pos="0.4,0.730"] NativeCountry [pos="0.193,0.197"] Occupation [pos="0.2,0.571"]
+Sex [pos="0.483,0.190"]
+Workclass [pos="0.870,0.580"]
+Age -> { Education HoursPerWeek Workclass }
+Education -> { HoursPerWeek Income Occupation Workclass }
+HoursPerWeek -> Income
+NativeCountry -> Education
+Occupation -> { HoursPerWeek  Income }
+Sex -> { Education HoursPerWeek Income }
+Workclass -> { HoursPerWeek Income }
+}
+')
+```
+
+```{r}
+r <- localTests(g,d, type='cis.pillai')
+plotLocalTestResults( r )
+```
+Confidence intervals are not implemented yet for the categorical data. Only when they are binary. Thats why most of the variables do not show the bounds.
+
+
+#### Analyzing the relationship Occp _||_ Sex | Education
+
+The drop=FALSE is required because if we just use d[,c(“Sex”)], R would “conveniently” convert the result (a single-column dataframe) to a vector. However, the function dummy_cols
+wants a dataframe as input.
+```{r}
+# One hot encoding sex
+s_dummy <- dummy_cols( d[,c("Sex"),drop=FALSE], remove_most_frequent_dummy=TRUE ) 
+head(s_dummy)
+```
+
+We see that the function has coded male=1. Knowing this, we can now remove the original column from the dataset
+```{r}
+s_dummy <- s_dummy[,-1,drop=FALSE]
+head(s_dummy)
+```
+
+Transform Occupation
+```{r}
+o_dummy <- dummy_cols( d[,c("Occupation"),drop=FALSE], remove_most_frequent_dummy=TRUE )[,-1]
+head(o_dummy,3)
+```
+
+Now we can compute the canonical correlation between the dummies. The number of canonical correlations equals the smaller number of dummies for the two variables. Occupation has 14 dummies and Sex has 1, so there will be only 1 canonical correlation in the end.
+```{r}
+cancor( o_dummy, s_dummy )$cor
+```
+This number measures the unconditional dependence between Sex and Occupation.
+
+To condition on Education, we need to add this variable to both sets of dummies. Since Education is (coded as) a numerical variable, we don’t need to do dummy coding, and we can just add it to both sides of the correlation function.
+```{r}
+cancor( cbind(o_dummy,d$Education), cbind(s_dummy,d$Education) )$cor
+```
+The first canonical correlation is irrelevant now – this is a result of adding “Education” to both sides.
+But he second canonical correlation is now conditioned on “Education”. Hence, this is our final result.
+
+Let’s compare that to what dagitty has to say:
+```{r}
+ciTest( "Occupation", "Sex", "Education", d, type="cis.pillai" )
+```
+Which is identical!
+
+And the corresponding p-value is computed as follows:
+```{r}
+rho <- cancor( cbind(o_dummy,d$Education), cbind(s_dummy,d$Education) )$cor 
+p.asym( rho, nrow(d), ncol(o_dummy)+1, ncol(s_dummy)+1, "Pillai" )
+```
+Very small indeed.We can see from the test results that the model is not great yet, and should be updated. We’ll leave this as an exercise, and continue to discuss
+
+
+
+
+
+
+
