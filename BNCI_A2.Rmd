@@ -162,6 +162,7 @@ head(data_raw)
 ```{r}
 hist(data_raw$chlorides)
 hist(data_raw$alcohol)
+
 var_x <- "chlorides"
 var_y <- "alcohol"
 plot_directory = "res_plots_A2"
@@ -361,6 +362,7 @@ data_normalized_incl_outlier$quality <- ordered(data_normalized_incl_outlier$qua
 data_normalized_incl_outlier[ , 1:(ncol(data_normalized_incl_outlier) - 1)] <- scale(data_raw[ , 1:(ncol(data_raw) - 1)]) # scaling
 ```
 ```{r}
+# Sanity check preprocessing
 class(data_normalized["quality"])
 hist(as.numeric(data_normalized$quality))
 hist(data_no_outlier$alcohol)
@@ -387,7 +389,7 @@ plot(data_test$fixed.acidity, data_test$quality,
          pch = 19, main = paste(var_y, "vs", var_x))
 ```
 
-## Our Model
+## Adjustments
 
 ### Initial iteration
 
@@ -518,28 +520,6 @@ As expected this resolves the worst misfitting.
 
 The next misfitting implied coniditonal independence is alcohol _||_ total.sulfur.dioxide. Acetaldehyde plays a role here to as it is the compound that is transformed to alcohol by yeast during the fermentation process. When acetaldehyde is bound by sulphur dioxide though it cannot be transformed into alcohol. Therefore we introduce the connection between total.sulfur.dioxide and alcohol.
 
-```{r}
-max_sugar <- max(data_raw$residual.sugar)
-print(max_sugar)
-data_no_outlier <- data_raw[data_raw$residual.sugar != max_sugar,]
-data_normalized_no_outlier <- data_no_outlier
-
-# Ordered factor for quality, such that lavaan applies polychoric relationship for quality
-data_normalized_no_outlier$quality <- ordered(data_normalized$quality, levels = sort(unique(data_normalized_no_outlier$quality)))
-data_normalized_no_outlier[ , 1:(ncol(data_normalized_no_outlier) - 1)] <- scale(data_raw[ , 1:(ncol(data_raw) - 1)]) # scaling
-head(data_normalized_no_outlier)
-
-CorM <- lavCor(data_normalized_no_outlier)
-results <- localTests(graph_white, sample.cov = CorM, sample.nobs = nrow(data_normalized_no_outlier), abbreviate.names = FALSE)
-results_ordered <- results[order(-abs(results$estimate), results$p.value),]
-results_ordered
-```
-
-```{r}
-plotLocalTestResults(results)
-plotLocalTestResults(results, n=10)
-```
-
 
 ### Update 2: total.sulfite.dioxide -> alcohol
 
@@ -589,12 +569,14 @@ total.sulfur.dioxide -> alcohol
 
 plot(graph_white_2)
 ```
+
 ```{r}
 CorM <- lavCor(data_normalized)
 results <- localTests(graph_white_2, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
 results_ordered <- results[order(-abs(results$estimate), results$p.value),]
 results_ordered
 ```
+
 ```{r}
 plotLocalTestResults(results)
 ```
@@ -605,8 +587,6 @@ The next large problem is residual.sugar _||_ total.sulfur.dioxide. The process 
 My idea to resolve this independence misfit is to find some latent representation of the fermentation process. I tried several explicit representations but they did not work out. When the SEM models where fit, the latent variable did not seem to express much of the variance. Then Johannes suggested to use implicit latent variables anyways. Those are much easier to fit and test as well.
 
 Domain-wise, I would find that it makes more sense to fit free.sulfur.dioxide <-> residual.sugar, but that did not resolve the independence problem (after fitting this only finds a covariance of 6%)
-
-
 
 
 ### Update 3: Implicit latent variableresidual.sugar _||_ total.sulfur.dioxide (e.g. Yeast)
@@ -686,17 +666,18 @@ fixed.acidity -> density
 fixed.acidity -> pH
 fixed.acidity -> quality
 free.sulfur.dioxide -> quality
-total.sulfur.dioxide <-> residual.sugar [pos="0.140,0.380"]
 pH -> quality
 residual.sugar -> alcohol
 residual.sugar -> density
 residual.sugar -> quality
 sulphates -> quality
-total.sulfur.dioxide -> alcohol
-total.sulfur.dioxide -> density
 total.sulfur.dioxide -> free.sulfur.dioxide
 volatile.acidity -> pH
 volatile.acidity -> quality
+
+total.sulfur.dioxide -> alcohol
+total.sulfur.dioxide -> density
+total.sulfur.dioxide <-> residual.sugar [pos="0.140,0.380"]
 }
 ')
 
@@ -799,187 +780,14 @@ plotLocalTestResults(results)
 plotLocalTestResults(results, n=10)
 ```
 
-#### Fitting initial SEM
+
+## Fitting adjusted SEM
+
+Note that the connection pH -> quality is pruned here as layed out in assignment 1.
+I did not want to keep the causal inference section I created in the first assignment as it is the main focus of the second assignment.
+
 ```{r}
 # Note that there are several edges set 0 as they were implied by lavaan
-
-lvsem <- "
-density~alcohol
-pH~alcohol
-quality~alcohol
-alcohol~chlorides
-density~chlorides
-quality~chlorides
-density~citric.acid
-pH~citric.acid
-quality~citric.acid
-citric.acid ~~ fixed.acidity
-quality~density
-density~fixed.acidity
-pH~fixed.acidity
-quality~fixed.acidity
-quality~free.sulfur.dioxide
-quality~pH
-alcohol~residual.sugar
-density~residual.sugar
-quality~residual.sugar
-total.sulfur.dioxide ~~ residual.sugar
-quality~sulphates
-alcohol~total.sulfur.dioxide
-density~total.sulfur.dioxide
-free.sulfur.dioxide~total.sulfur.dioxide
-pH~volatile.acidity
-quality~volatile.acidity
-
-volatile.acidity ~~ 0*chlorides
-volatile.acidity ~~ 0*sulphates
-sulphates ~~ 0*chlorides
-"
-
-lvsem.fit <- sem(lvsem, data_normalized)
-cg <- coordinates(graph_white_4)
-fg <- lavaanToGraph(lvsem.fit, digits=2)
-coordinates(fg) <- cg
-plot(fg, show.coefficients=TRUE)
-```
-```{r}
-# Extract all parameter estimates
-params <- parameterEstimates(lvsem.fit)
-
-# Filter for both regression (~) and bidirectional (~~) paths
-edge_coeffs <- params[params$op %in% c("~", "~~"), ]
-
-# Sort by magnitude in ascending order
-edge_coeffs_sorted <- edge_coeffs[order(abs(edge_coeffs$est)), ]
-
-# Display relevant columns (lhs, rhs, estimate)
-edge_coeffs_sorted[, c("lhs", "rhs", "est")]
-```
-Pruning was done on in combinations of causal effects.
-
-### Calculating main causal effects
-
-#### General covariance matrix
-```{r}
-graph_white_inference <- lavaanToGraph(lvsem.fit)
-#print(graph_white_inference)
-imCovM <- impliedCovarianceMatrix(graph_white_inference)
-```
-
-Sanity check: Sulphates has no parents. Therefore a simple linear model should get similar results than what inference on our fitted graph finds.
-```{r}
-print(lm(quality ~ sulphates, data_normalized))
-print(impliedCovarianceMatrix( graph_white_inference)['sulphates','quality'])
-```
-seems good, its in the same magnitude. But weird it has a different value
-
-
-#### Function to create interventional graph
-```{r}
-# Function to create interventional graph
-create_interventional_graph <- function(original_graph, variable_of_interest) {
-  # Parse the original graph
-  g <- dagitty(original_graph)
-  
-  # Extract node positions
-  nodes <- names(g)
-  coords <- coordinates(g)
-  node_positions <- sapply(nodes, function(node) {
-    sprintf('%s [pos="%.3f,%.3f"]', node, coords$x[node], coords$y[node])
-  })
-  
-  # Extract edges and beta coefficients from the original graph string
-  # Pattern to match: v ->|<-> w [beta="value"]
-  beta_pattern <- "([a-zA-Z._]+) (->|<->) ([a-zA-Z._]+) \\[beta=\"([-0-9.e]+)\"\\]"
-  betas <- stringr::str_match_all(original_graph, beta_pattern)[[1]]
-  edges <- data.frame(v = betas[, 2], w = betas[, 4], e = betas[,3], beta = betas[, 5], stringsAsFactors = FALSE)
-  
-  # Filter out incoming edges to the variable of interest
-  adjusted_edges <- edges[!(edges$e == "->" & edges$w == variable_of_interest), ]
-  
-  # Check for bidirectional edges and remove the ones involving the variable of interest
-  bidirectional_edges <- edges[edges$e == "<->",]
-  adjusted_bidirectional_edges <- bidirectional_edges[!(bidirectional_edges$v == variable_of_interest | bidirectional_edges$w == variable_of_interest), ]
-  
-  # Combine directed and filtered bidirectional edges
-  adjusted_edges <- rbind(
-    adjusted_edges[adjusted_edges$e == "->", ],
-    adjusted_bidirectional_edges
-  )
-  
-  # Create the adjusted DAG string
-  interventional_graph <- sprintf("dag {\n%s\n}", 
-                          paste(
-                            node_positions,
-                            paste0(
-                              apply(adjusted_edges, 1, function(row) {
-                                if (row["e"] == "->") {
-                                  sprintf("%s -> %s [beta=\"%s\"]", row["v"], row["w"], row["beta"])
-                                } else {
-                                  sprintf("%s <-> %s [beta=\"%s\"]", row["v"], row["w"], row["beta"])
-                                }
-                              }), 
-                              collapse = "\n"
-                            ), 
-                            collapse = "\n"
-                          ))
-  
-  return(dagitty(interventional_graph))
-}
-```
-
-#### Testing the interventional graph function
-```{r}
-# Generate interventional graph for "fixed.acidity"
-intervention_graph <- create_interventional_graph(fg, "density")
-cat(fg) #original graph
-cat(intervention_graph)
-plot(intervention_graph, show.coefficients = TRUE)
-```
-#### Calculating causal effects
-```{r}
-nodes <- names(fg)
-# Initialize a data frame to store the results
-causal_effects <- data.frame(
-  Variable = character(),  # To store variable names
-  CausalEffect = numeric() # To store causal effects
-)
-
-# Iterate over the nodes, skipping the "quality" variable
-for (node in nodes) {
-  if (node == "quality") next  # Skip the "quality" variable
-  
-  # Create the intervention graph
-  intervention_graph <- create_interventional_graph(fg, node)
-  
-  # Calculate the causal effect of the node on quality
-  causal_effect <- impliedCovarianceMatrix(intervention_graph)[node, 'quality']
-  
-  # Append the result to the data frame
-  causal_effects <- rbind(causal_effects, data.frame(Variable = node, CausalEffect = causal_effect))
-}
-
-# Print the final data frame
-#print(causal_effects)
-ce_ordered <- causal_effects[order(-abs(causal_effects$CausalEffect)),]
-print(ce_ordered)
-```
-Therefore our first research question is answered. Listed are the causal effects sorted by size of influence. 
-- Alcohol seems in line with what other researcher found. As alcohol was always in the top rankings of importance
-- density is surprising
-- volatile acidity also seems logical. Acetic acid makes wine taste like vinegar. Its an indicator for spoiled wine. A strong negative effect seems logical though
-- A negative effect of total.sulfur.dioxide also seems reasonable as sulfuric compounds are normally perceived as not pleasant (e.g. rotting eggs smell is due to sulfur compounds)
-- Surprising are citric.acid and residual.sugar and their low scores as these play a large role for the taste of wine. But I guess if the wine is sweet or acidic does not automatically indicate if its good or bad quality but has more characterizing property.
-
-Using polychoric correlations changed some of this:
-- now density has overly large contribution. This does not make much sense. 
-- free.sulfur.dioxide is listed with a positive causal effect which is weird. See the interpretation of total.sulfur dioxide
-- pH has a very low coefficient in the causal effect as well as the SEM model. As the acids in the wine directly influence the quality (in taste in acidity) it makes sense to exclude the relation pH -> quality. It then ends up as a collider in the network which also is logical as it is a mathematical measure of the total acids presents.
-- I would restrain to remove other edges as these are thought to give taste characteristics to the wine. It is informative to know if their effect is small or large.
-
-### SEM Refitting without pH
-```{r}
-# Now pH is also set to 0
 
 lvsem <- "
 density~alcohol
@@ -1016,28 +824,17 @@ volatile.acidity ~~ 0*sulphates
 sulphates ~~ 0*chlorides
 "
 
-lvsem.fit <- sem(lvsem, data_normalized)
-summary(lvsem.fit)
+lvsem.fit <- sem(lvsem, data_normalized, ordered = c("quality"))
 cg <- coordinates(graph_white_4)
 fg <- lavaanToGraph(lvsem.fit, digits=2)
 coordinates(fg) <- cg
 plot(fg, show.coefficients=TRUE)
 ```
-#### Test of fit
 ```{r}
-CorM <- lavCor(data_normalized)
-results <- localTests(graph_white_4, sample.cov = CorM, sample.nobs = nrow(data_normalized), abbreviate.names = FALSE)
-results_ordered <- results[order(-abs(results$estimate), results$p.value),]
-results_ordered
+# Sanity check: Lavaan did incorporate the polychoric correlations for the quality variable. As can be seen in the summary, it assigned thresholds for the different quality levels.
+summary(lvsem.fit)
 ```
 
-```{r}
-plotLocalTestResults(results)
-par(mar = c(5, 20, 4, 2))
-plotLocalTestResults(results, n=10, auto.margin=FALSE)
-```
-
-#### Model coefficients
 ```{r}
 # Extract all parameter estimates
 params <- parameterEstimates(lvsem.fit)
@@ -1051,90 +848,79 @@ edge_coeffs_sorted <- edge_coeffs[order(abs(edge_coeffs$est)), ]
 # Display relevant columns (lhs, rhs, estimate)
 edge_coeffs_sorted[, c("lhs", "rhs", "est")]
 ```
-#### Recalculating Causal Effects
+Pruning was done on in combinations of causal effects.
+
+## Causal Inference
+
+### Covariate Adjustment
+
+##### General covariance matrix
 ```{r}
-nodes <- names(fg)
-# Initialize a data frame to store the results
-causal_effects <- data.frame(
-  Variable = character(),  # To store variable names
-  CausalEffect = numeric() # To store causal effects
-)
-
-# Iterate over the nodes, skipping the "quality" variable
-for (node in nodes) {
-  if (node == "quality") next  # Skip the "quality" variable
-  
-  # Create the intervention graph
-  intervention_graph <- create_interventional_graph(fg, node)
-  
-  # Calculate the causal effect of the node on quality
-  causal_effect <- impliedCovarianceMatrix(intervention_graph)[node, 'quality']
-  
-  # Append the result to the data frame
-  causal_effects <- rbind(causal_effects, data.frame(Variable = node, CausalEffect = causal_effect))
-}
-
-# Print the final data frame
-#print(causal_effects)
-ce_ordered <- causal_effects[order(-abs(causal_effects$CausalEffect)),]
-ce_ordered$CausalEffect <- round(ce_ordered$CausalEffect, 3)
-print(ce_ordered)
-```
-#### Interpretation of causal effects
-
-```{r}
-# Initialize a data frame for denormalized causal effects
-denormalized_effects <- data.frame(
-  Variable = character(),           # Parent variables
-  NormalizedEffect = numeric(),   # Normalized causal effect
-  parent_sd_raw = numeric(),
-  DenormalizedEffect = numeric()  # Denormalized causal effect
-)
-
-# Iterate over the variables (assuming causal_effects is your calculated data frame)
-
-for (i in 1:nrow(causal_effects)) {
-  parent <- causal_effects$Variable[i]
-  #print(parent)
-  normalized_effect <- causal_effects$CausalEffect[i]
-  
-  # Get the standard deviation of the parent variable
-  #print(c(data_raw[parent]))
-  parent_sd <- sd(data_raw[[parent]])
-  #print(parent_sd)
-  
-  # Get the standard deviation of the quality variable
-  child_sd <- sd(as.numeric(data_raw$quality))  # Treat quality as numeric for SD
-  
-  # Denormalize the effect
-  denormalized_effect <- normalized_effect * parent_sd / child_sd
-  
-  # Append to the data frame
-  denormalized_effects <- rbind(denormalized_effects, 
-                                data.frame(
-                                  Variable = parent,
-                                  NormalizedEffect = normalized_effect,
-                                  parent_sd_raw = parent_sd,
-                                  DenormalizedEffect = denormalized_effect
-                                ))
-}
-
-# Round results to three decimals
-denormalized_effects$NormalizedEffect <- round(denormalized_effects$NormalizedEffect, 3)
-denormalized_effects$parent_sd_raw <- round(denormalized_effects$parent_sd_raw, 3)
-denormalized_effects$DenormalizedEffect <- round(denormalized_effects$DenormalizedEffect, 3)
-
-# Sort by the absolute value of the normalized effect
-denormalized_effects <- denormalized_effects[order(-abs(denormalized_effects$NormalizedEffect)), ]
-
-# Print the denormalized causal effects
-print(denormalized_effects)
+graph_white_inference <- lavaanToGraph(lvsem.fit)
+#print(graph_white_inference)
+imCovM <- impliedCovarianceMatrix(graph_white_inference)
 ```
 
-### Structure Learning
+Sanity check: Sulphates has no parents. Therefore a simple linear model should get similar results than what inference on our fitted graph finds.
 ```{r}
-variable_names <- 
-print(variable_names)
+print(lm(quality ~ sulphates, data_normalized))
+print(impliedCovarianceMatrix( graph_white_inference)['sulphates','quality'])
+```
+seems good, its in the same magnitude. But weird it has a different value
+Edit: Probably as lm() is not suited for the ordered factor as the warning states.Better suited would be something like logistic regression which can handle (ordered) categorical data. Lavaan fits the ordered factor via polychoric correlations though.
+
+#### Via Interventional graphs
+I decided to switch over to the regression adjustment as our treatment variables are not binary. E.g. the alcohol level can be changed with different percentage levels. Its not including alcohol and not including alcohol
+
+#### Via adjustment sets
+
+```{r}
+alcohol_adjustment <- adjustmentSets(graph_white_inference, exposure = "alcohol", outcome = "quality")
+print(alcohol_adjustment)
+```
+```{r}
+# Unadjusted estimate
+#mdl <- glm(quality ~ alcohol, 
+#            data = data_normalized, 
+#            family = "binomial")
+library(MASS)
+mdl <- polr(quality ~ alcohol, 
+            data = data_normalized, 
+            method = "logistic")  # or "probit" for a probit link
+summary(mdl)
+
+# Interpret coefficients
+exp(coef(mdl))  # Get odds ratios for each predictor
+```
+```{r}
+# Adjusted estimate
+#mdl <- glm(quality ~ alcohol+chlorides+residual.sugar+total.sulfur.dioxide, 
+#            data = data_normalized, 
+#            family = "binomial")
+mdl <- polr(quality ~ alcohol+chlorides+residual.sugar+total.sulfur.dioxide, 
+            data = data_normalized, 
+            method = "logistic")  # or "probit" for a probit link
+summary(mdl)
+
+# Interpret coefficients
+exp(coef(mdl))  # Get odds ratios for each predictor
+```
+
+```{r}
+sort(unique(data_normalized$quality))
+```
+
+### Propensity Scores - Adjustment
+
+```{r}
+
+```
+
+
+## Structure Learning
+```{r}
+#variable_names <- 
+#print(variable_names)
 ```
 
 ```{r}
@@ -1159,6 +945,7 @@ print(whitelist)
 fit <- pc.stable(data_normalized, whitelist = whitelist, blacklist = blacklist)
 print(fit)
 ```
+
 ```{r}
 plot(fit)
 ```
