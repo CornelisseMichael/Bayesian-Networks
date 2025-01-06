@@ -911,9 +911,59 @@ sort(unique(data_normalized$quality))
 ```
 
 ### Propensity Scores - Adjustment
+```{r}
+#Another sanity check about preprocessing
+hist(data_raw$alcohol)
+hist(log(data_raw$alcohol), breaks=20)
+#hist(scale(data_raw$alcohol), breaks=20)
+hist(scale(log(data_raw$alcohol)), breaks=20)
+hist(data_normalized$alcohol, breaks=20)
+```
+
 
 ```{r}
+mdl <- lm( alcohol ~ chlorides + residual.sugar + total.sulfur.dioxide, data_normalized )
+hist(mdl$residuals)
+```
+```{r}
+pscores <- dnorm(mdl$residuals, sd=sigma(mdl))
+#bins <- length(sort(unique(data_raw$quality)))
+print(sum(data_raw$quality == 3))
+hist(data_raw$quality)
+quality_normalized <- scale(data_no_outlier$quality)
+hist(quality_normalized)
+# hist(data_normalized$quality) does not work as stored as ordered factor here
 
+```
+```{r}
+# Unadjusted effect
+
+# denormalized effect = normalized effect ∗ variable std/quality std
+mdl <- lm(quality_normalized ~ data_normalized$alcohol)
+# Normalized effect
+normalized_effect <- coef(mdl)[2]
+print(normalized_effect)
+
+# Denormalized effect
+parent_sd <- sd(data_no_outlier$alcohol)
+child_sd <- sd(data_no_outlier$quality)
+denormalized_effect <- normalized_effect * parent_sd / child_sd
+print(denormalized_effect)
+```
+
+```{r}
+# Same procedure for adjusted effect
+
+mdl <- lm(quality_normalized ~ data_normalized$alcohol + pscores)
+# Normalized effect
+normalized_effect <- coef(mdl)[2]
+print(normalized_effect)
+
+# Denormalized effect
+parent_sd <- sd(data_no_outlier$alcohol)
+child_sd <- sd(data_no_outlier$quality)
+denormalized_effect <- normalized_effect * parent_sd / child_sd
+print(denormalized_effect)
 ```
 
 

@@ -934,8 +934,116 @@ p.asym( rho, nrow(d), ncol(o_dummy)+1, ncol(s_dummy)+1, "Pillai" )
 ```
 Very small indeed.We can see from the test results that the model is not great yet, and should be updated. We’ll leave this as an exercise, and continue to discuss
 
+## Chapter 10 - Propensity scores
+
+```{r}
+library( stddiff ) 
+library( forestplot ) 
+library( MatchIt )
+```
+```{r}
+data(lalonde)
+lalonde$black <- lalonde$race=="black" 
+lalonde$hispan <- lalonde$race=="hispan"
+```
+
+```{r}
+summary( lm( re78 ~ treat, lalonde ) )
+```
+At first glance, coefficient of -635.0 indicates a negative effect.
+
+```{r}
+t.test( re75 ~ treat, lalonde )
+```
+What is shown is a test that checks if the groups who did not take the treatment (group 0) and the ones who did (group 1) are significantly different. And as can be seen from the means, the group that did participate in the program started with a lower income.
+
+### Checking covariate imbalance
+```{r}
+cls <- c("age","educ","re74","re75","married","nodegree","black","hispan") 
+base_imb <- as.data.frame(stddiff.numeric(lalonde, vcol=cls, gcol="treat"))
+```
+
+```{r}
+forestplot(
+  labeltext = cls, 
+  mean=base_imb$stddiff, 
+  lower=base_imb$stddiff.l, 
+  upper=base_imb$stddiff.u )
+```
+More black people took the program?
+
+### Computing and using propensity scores
+```{r}
+mdl <- glm( treat ~ age+educ+re74+re75+married+nodegree+black+hispan, data=lalonde, family="binomial" )
+summary( mdl )
+```
+Then we can obtain the propensity scores (i.e., probabilities to receive the treatment given the covariates) by transforming the log-odds-ratios predicted by the logistic regression model to probabilities:
+
+```{r}
+pscore_logit <- predict( mdl )
+pscore <- exp(pscore_logit) / (1+exp(pscore_logit))
+```
+
+```{r}
+boxplot( pscore ~ lalonde$treat )
+```
+
+Now we’ll use the propensity scores to estimate our treatment effect. First of all, we’ll use inverse probability weighting.
+```{r}
+wgt <- 1/pscore
+wgt[!lalonde$treat] <- 1/(1-pscore[!lalonde$treat]) 
+summary( lm( re78 ~ treat, lalonde, weights=pscore ) )
+```
+
+Matching
+```{r}
+mm <- matchit( lalonde$treat ~ pscore, caliper=0.1 )$match.matrix
+mm <- mm[!is.na(mm),,drop=FALSE] 
+trt <- as.integer(rownames(mm)) 
+ctrl <- as.integer(mm[,1])
+dmtch <- lalonde[c(trt,ctrl),]
+```
+
+```{r}
+match_imb <- as.data.frame(stddiff.numeric(dmtch, vcol=cls, gcol="treat")) 
+forestplot(
+  labeltext = cls, 
+  mean=match_imb$stddiff, 
+  lower=match_imb$stddiff.l, 
+  upper=match_imb$stddiff.u )
+```
+```{r}
+summary( lm( re78 ~ treat, dmtch) )
+```
+### Propensity scores for continous treatments
+```{r}
+library( foreign )
+d <- read.dta("LotteryDataSet.dta") 
+d <- as.data.frame(d)
+hist(d$prize, breaks=100)
+```
+
+How does the amount you win in the lottery influence your subsequent earnings?
+
+```{r}
+d$logprize <- log( d$prize )
+hist(d$logprize, breaks=100)
+```
+
+```{r}
+mdl <- lm( logprize ~ yearm1 + yearm2 + yearm3 + yearm4 + yearm5 + yearm6 + agew + ownhs + owncoll + male + tixbot + workthen + yearw, d )
+round( coef(mdl), 2 )
+```
+For a binary treatment, this would be the probability of being treated. For a continuous treatment, we will instead use the likelihood of each observation from the fitted linear regression model. We can get this from the probability density function of a normal distribution, evaluated at the residuals:
+
+```{r}
+hist(mdl$residuals)
+```
 
 
+```{r}
+d$score <- dnorm(mdl$residuals, sd=sigma(mdl))
+```
 
 
 
