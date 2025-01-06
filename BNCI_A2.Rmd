@@ -34,7 +34,7 @@ head(data_raw)
 # 
 # # Create a directory to save plots if needed
 # plot_directory = "plots_A2"
-#   
+# 
 # if (!dir.exists(plot_directory)) {
 #   dir.create(plot_directory)
 # }
@@ -45,16 +45,16 @@ head(data_raw)
 #     #if (i == 1 & j == 2){
 #       var_x <- variable_names[i]
 #       var_y <- variable_names[j]
-#   
+# 
 #       # Base plot
 #       plot(data_plot[[var_x]], data_plot[[var_y]],
 #            xlab = var_x, ylab = var_y,
 #            pch = 19, main = paste(var_y, "vs", var_x))
-#   
+# 
 #       # Fit linear model
 #       model <- lm(data_plot[[var_y]] ~ data_plot[[var_x]])
 #       abline(model, col = 2)
-#   
+# 
 #       # Extract and display coefficient and p-value
 #       summary_model <- summary(model)
 #       coef <- summary_model$coefficients[2, "Estimate"]
@@ -62,23 +62,23 @@ head(data_raw)
 #       text(x = 0.7 * max(data_plot[[var_x]], na.rm = TRUE),
 #            y = 0.9 * max(data_plot[[var_y]], na.rm = TRUE),
 #            labels = paste("Coeff =", round(coef, 3), "\nP-value =", round(pval, 3)), col = "blue")
-#   
+# 
 #       # Save the plot
 #       file_name <- paste0(plot_directory, "/", var_y, "_vs_", var_x, ".png")
 #       dev.copy(png, file_name)
 #       dev.off()
-#   
+# 
 #       # Log transformation plots
 #       if (all(data_plot[[var_x]] > 0) && all(data_plot[[var_y]] > 0)) { # Log works only for positive values
 #         plot(log(data_plot[[var_x]]), log(data_plot[[var_y]]),
 #              xlab = paste("log(", var_x, ")", sep = ""),
 #              ylab = paste("log(", var_y, ")", sep = ""),
 #              pch = 19, main = paste("log(", var_y, ") vs log(", var_x, ")"))
-#   
+# 
 #         # Fit linear model for log-transformed data
 #         model_log <- lm(log(data_plot[[var_y]]) ~ log(data_plot[[var_x]]))
 #         abline(model_log, col = 2)
-#   
+# 
 #         # Extract and display coefficient and p-value for log-transformed data
 #         summary_model_log <- summary(model_log)
 #         coef_log <- summary_model_log$coefficients[2, "Estimate"]
@@ -86,7 +86,7 @@ head(data_raw)
 #         text(x = 0.7 * max(log(data_plot[[var_x]]), na.rm = TRUE),
 #              y = 0.9 * max(log(data_plot[[var_y]]), na.rm = TRUE),
 #              labels = paste("Coeff =", round(coef_log, 3), "\nP-value =", round(pval_log, 3)), col = "blue")
-#   
+# 
 #         # Save the log-transformed plot
 #         log_file_name <- paste0(plot_directory, "/", var_y, "_vs_log_", var_x, ".png")
 #         dev.copy(png, log_file_name)
@@ -100,7 +100,7 @@ head(data_raw)
 
 #### Residual plots
 ```{r}
-# Create a directory to save residual plots if needed
+# #Create a directory to save residual plots if needed
 # plot_directory = "res_plots_A2"
 # if (!dir.exists(plot_directory)) {
 #   dir.create(plot_directory)
@@ -887,11 +887,47 @@ library(MASS)
 mdl <- polr(quality ~ alcohol, 
             data = data_normalized, 
             method = "logistic")  # or "probit" for a probit link
+normalized_coefficients <- coef(mdl)
 summary(mdl)
 
 # Interpret coefficients
 exp(coef(mdl))  # Get odds ratios for each predictor
 ```
+```{r}
+# Converting normalized data back for interpretation
+
+# Initialize a dataframe to store results
+results_df <- data.frame(
+  Predictor = names(normalized_coefficients),
+  Normalized_Coefficient = as.numeric(normalized_coefficients),
+  Normalized_Odds_Ratio = as.numeric(exp(normalized_coefficients)),
+  Std_Dev_Original = NA,  # Placeholder for standard deviations
+  Denormalized_Coefficient = NA,  # Placeholder for denormalized coefficients
+  Denormalized_Odds_Ratio = NA  # Placeholder for odds ratios
+)
+
+# Loop through each predictor
+for (predictor in results_df$Predictor) {
+  # Compute the original standard deviation of the predictor
+  sd_original <- sd(data_no_outlier[[predictor]])
+  
+  # Denormalize the coefficient
+  denormalized_coeff <- normalized_coefficients[predictor] * sd_original
+  
+  # Compute the odds ratio
+  odds_ratio <- exp(denormalized_coeff)
+  
+  # Store values in the dataframe
+  results_df[results_df$Predictor == predictor, "Std_Dev_Original"] <- sd_original
+  results_df[results_df$Predictor == predictor, "Denormalized_Coefficient"] <- denormalized_coeff
+  results_df[results_df$Predictor == predictor, "Denormalized_Odds_Ratio"] <- odds_ratio
+}
+
+# Display the results
+print(results_df)
+```
+
+
 ```{r}
 # Adjusted estimate
 #mdl <- glm(quality ~ alcohol+chlorides+residual.sugar+total.sulfur.dioxide, 
@@ -900,6 +936,7 @@ exp(coef(mdl))  # Get odds ratios for each predictor
 mdl <- polr(quality ~ alcohol+chlorides+residual.sugar+total.sulfur.dioxide, 
             data = data_normalized, 
             method = "logistic")  # or "probit" for a probit link
+normalized_coefficients <- coef(mdl)
 summary(mdl)
 
 # Interpret coefficients
@@ -907,7 +944,37 @@ exp(coef(mdl))  # Get odds ratios for each predictor
 ```
 
 ```{r}
-sort(unique(data_normalized$quality))
+# Converting normalized data back for interpretation
+
+# Initialize a dataframe to store results
+results_df <- data.frame(
+  Predictor = names(normalized_coefficients),
+  Normalized_Coefficient = as.numeric(normalized_coefficients),
+  Normalized_Odds_Ratio = as.numeric(exp(normalized_coefficients)),
+  Std_Dev_Original = NA,  # Placeholder for standard deviations
+  Denormalized_Coefficient = NA,  # Placeholder for denormalized coefficients
+  Denormalized_Odds_Ratio = NA  # Placeholder for odds ratios
+)
+
+# Loop through each predictor
+for (predictor in results_df$Predictor) {
+  # Compute the original standard deviation of the predictor
+  sd_original <- sd(data_no_outlier[[predictor]])
+  
+  # Denormalize the coefficient
+  denormalized_coeff <- normalized_coefficients[predictor] * sd_original
+  
+  # Compute the odds ratio
+  odds_ratio <- exp(denormalized_coeff)
+  
+  # Store values in the dataframe
+  results_df[results_df$Predictor == predictor, "Std_Dev_Original"] <- sd_original
+  results_df[results_df$Predictor == predictor, "Denormalized_Coefficient"] <- denormalized_coeff
+  results_df[results_df$Predictor == predictor, "Denormalized_Odds_Ratio"] <- odds_ratio
+}
+
+# Display the results
+print(results_df)
 ```
 
 ### Propensity Scores - Adjustment
@@ -966,8 +1033,7 @@ denormalized_effect <- normalized_effect * parent_sd / child_sd
 print(denormalized_effect)
 ```
 
-
-## Structure Learning
+## Omitted as Team of 2: Structure Learning
 ```{r}
 #variable_names <- 
 #print(variable_names)
