@@ -890,8 +890,8 @@ library(MASS)
 # I'm using data_normalized here, simply because quality is saved as the ordered factor in that dataframe.
 mdl <- polr(data_normalized$quality ~ log(data_no_outlier$alcohol), 
             method = "logistic")  # or "probit" for a probit link
-normalized_coefficients <- coef(mdl)
 summary(mdl)
+
 
 # Interpret coefficients
 # coeff = change in logs(odds_ratio) per unit change in log(alcohol)
@@ -899,7 +899,10 @@ summary(mdl)
 # log(1.01) = represents the change in log scale for a 1% increase in alcohol
 # exp(coef*log(1.01)) = change in odds_ratio upon a 1% increase in alcohol
 
+exp(coef(mdl))
 exp(coef(mdl)*log(1.10))
+stde <- summary(mdl)$coefficients[1, "Std. Error"]
+exp(stde*log(1.10))
 ```
 
 
@@ -919,6 +922,9 @@ print("Exponentiated coefficients")
 exp(coef(mdl))
 print("Alcohol 10% change")
 exp(coef(mdl)*log(1.10))["log(alcohol)"]
+print("Alcohol 10% change -> Standard errors")
+stde <- summary(mdl)$coefficients[1, "Std. Error"]
+exp(stde*log(1.10))
 ```
 
 ### Propensity Scores - Adjustment
@@ -964,7 +970,8 @@ mdl <- lm(data$quality ~ log(data$alcohol))
 
 summary(mdl)
 coef(mdl)*log(1.10)
-
+stde <- summary(mdl)$coefficients[1, "Std. Error"]
+stde*log(1.10)
 
 # Omitted: Denormalized effect:
 
@@ -985,6 +992,8 @@ mdl <- lm(data$quality ~ log(data$alcohol) + pscores)
 
 summary(mdl)
 coef(mdl)*log(1.10)
+stde <- summary(mdl)$coefficients[1, "Std. Error"]
+stde*log(1.10)
 
 # Omitted: 
 # Normalized effect
