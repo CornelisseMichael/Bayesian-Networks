@@ -879,6 +879,128 @@ alcohol_adjustment <- adjustmentSets(graph_white_inference, exposure = "alcohol"
 print(alcohol_adjustment)
 ```
 ```{r}
+# Test, normalization is difficult to interpret together with log transform of alcohol.
+# Run regression again without the normalization
+
+# Unadjusted estimate
+#mdl <- glm(quality ~ alcohol, 
+#            data = data_normalized, 
+#            family = "binomial")
+library(MASS)
+# I'm using data_normalized here, simply because quality is saved as the ordered factor in that dataframe.
+mdl <- polr(data_normalized$quality ~ log(data_no_outlier$alcohol), 
+            method = "logistic")  # or "probit" for a probit link
+normalized_coefficients <- coef(mdl)
+summary(mdl)
+
+# Interpret coefficients
+# coeff = change in logs(odds_ratio) per unit change in log(alcohol)
+# exp(coeff) = change in odds_ratio per unit change in log(alcohol)
+# log(1.01) = represents the change in log scale for a 1% increase in alcohol
+# exp(coef*log(1.01)) = change in odds_ratio upon a 1% increase in alcohol
+
+exp(coef(mdl)*log(1.10))
+```
+
+
+```{r}
+# Adjusted estimate
+#mdl <- glm(quality ~ alcohol+chlorides+residual.sugar+total.sulfur.dioxide, 
+#            data = data_normalized, 
+#            family = "binomial")
+mdl <- polr(data_normalized$quality ~ log(alcohol)+chlorides+residual.sugar+total.sulfur.dioxide, 
+            data = data_no_outlier, 
+            method = "logistic")  # or "probit" for a probit link
+normalized_coefficients <- coef(mdl)
+summary(mdl)
+
+# Interpret coefficients
+print("Exponentiated coefficients")
+exp(coef(mdl))
+print("Alcohol 10% change")
+exp(coef(mdl)*log(1.10))["log(alcohol)"]
+```
+
+### Propensity Scores - Adjustment
+```{r}
+#Another sanity check about preprocessing
+hist(data_raw$alcohol)
+hist(log(data_raw$alcohol), breaks=20)
+#hist(scale(data_raw$alcohol), breaks=20)
+hist(scale(log(data_raw$alcohol)), breaks=20)
+hist(data_normalized$alcohol, breaks=20)
+```
+
+
+```{r}
+data = data_no_outlier
+mdl <- lm( log(alcohol) ~ chlorides + residual.sugar + total.sulfur.dioxide, data )
+pscores <- dnorm(mdl$residuals, sd=sigma(mdl))
+hist(mdl$residuals)
+```
+Assumption for propensity scores to work is that this linear regression for the scores is correct. That is the case when the residuals are normally distributed.
+
+```{r}
+# Omitted, we dont use normalized data anymore for better interpretability.
+
+#bins <- length(sort(unique(data_raw$quality)))
+#print(sum(data_raw$quality == 3))
+#hist(data_raw$quality)
+#quality_normalized <- scale(data_no_outlier$quality)
+#hist(quality_normalized)
+# hist(data_normalized$quality) does not work as stored as ordered factor here
+
+
+```
+
+
+For the propensity score regression we do not treat quality as an ordered factor but as continous, which should be decent.
+Simply for the reason that the course did not treat the case of an ordinal outcome variable and we did not find a reasonably easy attempt to account for this.
+
+```{r}
+# Unadjusted effect
+
+mdl <- lm(data$quality ~ log(data$alcohol))
+
+summary(mdl)
+coef(mdl)*log(1.10)
+
+
+# Omitted: Denormalized effect:
+
+# Normalized effect
+#normalized_effect <- coef(mdl)[2]
+#print(normalized_effect)
+# denormalized effect = normalized effect ∗ variable std/quality std
+#parent_sd <- sd(data$alcohol)
+#child_sd <- sd(data$quality)
+#denormalized_effect <- normalized_effect * parent_sd / child_sd
+#print(denormalized_effect)
+```
+
+```{r}
+# Same procedure for adjusted effect
+
+mdl <- lm(data$quality ~ log(data$alcohol) + pscores)
+
+summary(mdl)
+coef(mdl)*log(1.10)
+
+# Omitted: 
+# Normalized effect
+#normalized_effect <- coef(mdl)[2]
+#print(normalized_effect)
+# Denormalized effect
+#parent_sd <- sd(data_no_outlier$alcohol)
+#child_sd <- sd(data_no_outlier$quality)
+#denormalized_effect <- normalized_effect * parent_sd / child_sd
+#print(denormalized_effect)
+```
+
+## Omitted Code
+
+### Left out normalisation from logistic regression. Otherwise interpretation is too difficult
+```{r}
 # Unadjusted estimate
 #mdl <- glm(quality ~ alcohol, 
 #            data = data_normalized, 
@@ -893,6 +1015,7 @@ summary(mdl)
 # Interpret coefficients
 exp(coef(mdl))  # Get odds ratios for each predictor
 ```
+
 ```{r}
 # Converting normalized data back for interpretation
 
@@ -926,7 +1049,6 @@ for (predictor in results_df$Predictor) {
 # Display the results
 print(results_df)
 ```
-
 
 ```{r}
 # Adjusted estimate
@@ -977,63 +1099,7 @@ for (predictor in results_df$Predictor) {
 print(results_df)
 ```
 
-### Propensity Scores - Adjustment
-```{r}
-#Another sanity check about preprocessing
-hist(data_raw$alcohol)
-hist(log(data_raw$alcohol), breaks=20)
-#hist(scale(data_raw$alcohol), breaks=20)
-hist(scale(log(data_raw$alcohol)), breaks=20)
-hist(data_normalized$alcohol, breaks=20)
-```
-
-
-```{r}
-mdl <- lm( alcohol ~ chlorides + residual.sugar + total.sulfur.dioxide, data_normalized )
-hist(mdl$residuals)
-```
-```{r}
-pscores <- dnorm(mdl$residuals, sd=sigma(mdl))
-#bins <- length(sort(unique(data_raw$quality)))
-print(sum(data_raw$quality == 3))
-hist(data_raw$quality)
-quality_normalized <- scale(data_no_outlier$quality)
-hist(quality_normalized)
-# hist(data_normalized$quality) does not work as stored as ordered factor here
-
-```
-```{r}
-# Unadjusted effect
-
-# denormalized effect = normalized effect ∗ variable std/quality std
-mdl <- lm(quality_normalized ~ data_normalized$alcohol)
-# Normalized effect
-normalized_effect <- coef(mdl)[2]
-print(normalized_effect)
-
-# Denormalized effect
-parent_sd <- sd(data_no_outlier$alcohol)
-child_sd <- sd(data_no_outlier$quality)
-denormalized_effect <- normalized_effect * parent_sd / child_sd
-print(denormalized_effect)
-```
-
-```{r}
-# Same procedure for adjusted effect
-
-mdl <- lm(quality_normalized ~ data_normalized$alcohol + pscores)
-# Normalized effect
-normalized_effect <- coef(mdl)[2]
-print(normalized_effect)
-
-# Denormalized effect
-parent_sd <- sd(data_no_outlier$alcohol)
-child_sd <- sd(data_no_outlier$quality)
-denormalized_effect <- normalized_effect * parent_sd / child_sd
-print(denormalized_effect)
-```
-
-## Omitted as Team of 2: Structure Learning
+### as Team of 2: Structure Learning
 ```{r}
 #variable_names <- 
 #print(variable_names)
