@@ -902,6 +902,7 @@ summary(mdl)
 exp(coef(mdl))
 exp(coef(mdl)*log(1.10))
 stde <- summary(mdl)$coefficients[1, "Std. Error"]
+#print(stde)
 exp(stde*log(1.10))
 ```
 
@@ -924,6 +925,7 @@ print("Alcohol 10% change")
 exp(coef(mdl)*log(1.10))["log(alcohol)"]
 print("Alcohol 10% change -> Standard errors")
 stde <- summary(mdl)$coefficients[1, "Std. Error"]
+print(stde)
 exp(stde*log(1.10))
 ```
 
@@ -970,7 +972,8 @@ mdl <- lm(data$quality ~ log(data$alcohol))
 
 summary(mdl)
 coef(mdl)*log(1.10)
-stde <- summary(mdl)$coefficients[1, "Std. Error"]
+stde <- summary(mdl)$coefficients[2, "Std. Error"]
+#print(stde)
 stde*log(1.10)
 
 # Omitted: Denormalized effect:
@@ -992,7 +995,7 @@ mdl <- lm(data$quality ~ log(data$alcohol) + pscores)
 
 summary(mdl)
 coef(mdl)*log(1.10)
-stde <- summary(mdl)$coefficients[1, "Std. Error"]
+stde <- summary(mdl)$coefficients[2:3, "Std. Error"]
 stde*log(1.10)
 
 # Omitted: 
